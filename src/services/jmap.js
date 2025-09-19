@@ -30,7 +30,7 @@ export class JMAPClient {
   /* ---------- low-level ---------- */
   async fetchSession() {
     let r = await fetch(this.sessionUrl, {
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", Authorization: this.AUTH },
       mode: "cors",
       credentials: "omit",
     });
@@ -545,3 +545,4 @@ export class JMAPClient {
 }
 
 export const JMAP = { Client: JMAPClient, NS: { CORE, MAIL, SUBMIT } };
+
