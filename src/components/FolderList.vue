@@ -185,4 +185,16 @@ export default {
   font-weight: 700;
   color: var(--text);
 }
+
+@media (max-width: 900px) {
+  .folders {
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    max-height: 220px;
+  }
+
+  .fscroll {
+    max-height: 220px;
+  }
+}
 </style>

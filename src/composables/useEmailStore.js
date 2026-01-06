@@ -1153,7 +1153,14 @@ export function useEmailStore() {
   const updateIdentity = async (identityId, updates) => {
     if (!client.value) throw new Error("Not connected");
     const result = await client.value.updateIdentity(identityId, updates);
-    identities.value = await client.value.listIdentities();
+    identities.value = identities.value.map((identity) =>
+      identity.id === identityId ? { ...identity, ...updates } : identity
+    );
+    try {
+      identities.value = await client.value.listIdentities();
+    } catch {
+      // Keep optimistic update if refresh fails.
+    }
     return result;
   };
 

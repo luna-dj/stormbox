@@ -1,5 +1,5 @@
 <script>
-import { computed, provide } from 'vue'
+import { computed, provide, ref, watch } from 'vue'
 import { useEmailStore } from './composables/useEmailStore.js'
 import { useCalendarStore } from './composables/useCalendarStore.js'
 import { useTheme } from './composables/useTheme.js'
@@ -32,6 +32,7 @@ export default {
     const emailStore = useEmailStore()
     const calendarStore = useCalendarStore(emailStore)
     const { theme, cycle } = useTheme()
+    const foldersOpen = ref(false)
 
     const serverName = computed(() => {
       const url = "https://hivepost.nl"
@@ -49,10 +50,35 @@ export default {
         emailStore.currentView.value = 'calendar'
         // Refresh calendars when switching to calendar view
         calendarStore.refreshCalendars()
+        foldersOpen.value = false
       } else {
         emailStore.switchView(view)
+        foldersOpen.value = false
       }
     }
+
+    const openFolders = () => {
+      foldersOpen.value = true
+    }
+
+    const closeFolders = () => {
+      foldersOpen.value = false
+    }
+
+    const toggleFolders = () => {
+      foldersOpen.value = !foldersOpen.value
+    }
+
+    const switchMailboxAndClose = (mailboxId) => {
+      emailStore.switchMailbox(mailboxId)
+      foldersOpen.value = false
+    }
+
+    watch(() => emailStore.currentView.value, (view) => {
+      if (view !== 'mail') {
+        foldersOpen.value = false
+      }
+    })
 
     // Provide stores to child components
     provide('emailStore', emailStore)
@@ -67,12 +93,26 @@ export default {
       await calendarStore.refreshEvents()
     }
 
+    const handleIdentityUpdate = async ({ id, updates }) => {
+      try {
+        await emailStore.updateIdentity(id, updates)
+      } catch (e) {
+        alert(`Failed to update identity: ${e.message}`)
+      }
+    }
+
     return {
       ...emailStore,
       ...calendarStore,
       switchView,
       saveEvent,
       deleteEvent,
+      handleIdentityUpdate,
+      foldersOpen,
+      openFolders,
+      closeFolders,
+      toggleFolders,
+      switchMailboxAndClose,
       currentTheme: theme,
       cycle,
       serverName,
@@ -114,6 +154,12 @@ export default {
       </div>
       <strong>{{ currentView === 'mail' ? 'Mail' : currentView === 'contacts' ? 'Contacts' : 'Calendar' }} — {{ serverName }}</strong>
       <span class="spacer"></span>
+      <button class="header-btn mobile-only" @click="toggleFolders" title="Folders" aria-label="Folders">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M3 6a2 2 0 012-2h5l2 2h7a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V6z"/>
+        </svg>
+        <span>Folders</span>
+      </button>
       <button class="header-btn" @click="openContactEditor()" title="New Contact" aria-label="New Contact">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
           <path d="M20 0H4a4 4 0 00-4 4v16a4 4 0 004 4h16a4 4 0 004-4V4a4 4 0 00-4-4zm-2 12h-6v6h-4v-6H4v-4h4V2h4v6h6v4z"/>
@@ -150,14 +196,16 @@ export default {
     <main id="main" :class="[
       currentView === 'contacts' ? 'contacts-view' : '',
       currentView === 'calendar' ? 'calendar-view-main' : '',
-      (!selectedEmailId && !composeOpen && !contactEditorOpen && currentView !== 'calendar') ? 'hide-detail' : ''
+      (!selectedEmailId && !composeOpen && !contactEditorOpen && currentView !== 'calendar') ? 'hide-detail' : '',
+      (currentView === 'mail' && (selectedEmailId || composeOpen)) ? 'mobile-detail-open' : '',
+      (currentView === 'contacts' && (contactEditorOpen || selectedContactId)) ? 'mobile-contact-open' : ''
     ]" v-if="connected">
       <!-- Mail View -->
       <template v-if="currentView === 'mail'">
         <!-- Folder List -->
-        <div style="display: flex; flex-direction: column; border-right: 1px solid var(--border);">
+        <div class="folders-panel" :class="{ open: foldersOpen }">
           <FolderList :mailboxes="mailboxes" :current-mailbox-id="currentMailboxId" @compose="toggleCompose"
-            @reload="refreshCurrentMailbox" @switch-mailbox="switchMailbox" />
+            @reload="refreshCurrentMailbox" @switch-mailbox="switchMailboxAndClose" />
           <DraftsList 
             :drafts="drafts" 
             :loading="loadingDrafts"
@@ -165,6 +213,7 @@ export default {
             @refresh="refreshDrafts"
           />
         </div>
+        <div class="folders-scrim" :class="{ open: foldersOpen }" @click="closeFolders"></div>
 
         <!-- Message List -->
         <MessageList :current-mailbox-id="currentMailboxId" :selected-email-id="selectedEmailId" :view-mode="viewMode"
@@ -213,7 +262,7 @@ export default {
           @update:compose="Object.assign(compose, $event)"
           @update:signature="setSignatureText"
           @update:signature-enabled="setSignatureEnabled"
-          @update:identity="({ id, name, email }) => updateIdentity(id, { name, email })"
+          @update:identity="handleIdentityUpdate"
         />
 
         <!-- Message Detail -->
@@ -238,6 +287,30 @@ export default {
         />
       </section>
     </main>
+
+    <nav v-if="connected" class="mobile-tabs" aria-label="Primary">
+      <button
+        class="tab-btn"
+        :class="{ active: currentView === 'mail' }"
+        @click="switchView('mail')"
+      >
+        Mail
+      </button>
+      <button
+        class="tab-btn"
+        :class="{ active: currentView === 'contacts' }"
+        @click="switchView('contacts')"
+      >
+        Contacts
+      </button>
+      <button
+        class="tab-btn"
+        :class="{ active: currentView === 'calendar' }"
+        @click="switchView('calendar')"
+      >
+        Calendar
+      </button>
+    </nav>
 
     <!-- Event Editor (keep outside .detail so it's visible in calendar view) -->
     <EventEditor 

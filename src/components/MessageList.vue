@@ -20,7 +20,7 @@ export default {
     const filterText = ref('')
     const rows = ref(null)
     const colsRef = ref(null)
-    const rowHeight = 56
+    const rowHeight = ref(56)
     const debugInfo = false
 
     const sortPropForBox = (boxId) => {
@@ -71,11 +71,20 @@ export default {
       return props.totalCount || items.value.length;
     })
 
+    const updateRowHeight = () => {
+      rowHeight.value = window.innerWidth <= 900 ? 76 : 56
+    }
+
+    onMounted(() => {
+      updateRowHeight()
+      window.addEventListener('resize', updateRowHeight)
+    })
+
     const virtualizer = useVirtualizer(
       computed(() => ({
         count: virtualCount.value,
         getScrollElement: () => rows.value,
-        estimateSize: () => rowHeight,
+        estimateSize: () => rowHeight.value,
         overscan: 8,
         // Stable key by index avoids DOM reuse hazards during long jumps/sparse loads
         getItemKey: (i) => i,
@@ -457,6 +466,85 @@ export default {
 .rowitem.unread .who,
 .rowitem.unread .subject {
   font-weight: 700;
+}
+
+@media (max-width: 900px) {
+  .list {
+    --colspec: 32px 1fr;
+  }
+
+  .list .viewbar,
+  .list .countbar,
+  .list .filterbar {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  #rows .cols {
+    grid-template-columns: var(--colspec);
+    padding-left: 14px;
+  }
+
+  #rows .cols div:nth-child(3),
+  #rows .cols div:nth-child(4),
+  #rows .cols div:nth-child(1) {
+    display: none;
+  }
+
+  #rows .cols div:nth-child(2) {
+    grid-column: 2 / -1;
+    text-align: left;
+  }
+
+  .rowitem {
+    grid-template-columns: var(--colspec);
+    row-gap: 2px;
+    padding-left: 14px;
+    height: 76px;
+  }
+
+  .rowitem .line {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .rowitem .who,
+  .rowitem .line {
+    grid-column: 2 / -1;
+  }
+
+  .rowitem .date {
+    display: none;
+  }
+
+  .rowitem .who {
+    font-size: 14px;
+  }
+
+  .rowitem .subject {
+    font-size: 13px;
+  }
+
+  .rowitem .snippet {
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .filterbar {
+    grid-template-columns: 1fr;
+  }
+
+  .filter-input-container {
+    width: 100%;
+    max-width: none;
+  }
+
+  #rows {
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 .rowitem .snippet {

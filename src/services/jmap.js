@@ -446,6 +446,9 @@ export class JMAPClient {
     if (updates.name !== undefined) payload.name = updates.name || "";
     if (updates.email !== undefined) payload.email = updates.email || "";
     if (updates.replyTo !== undefined) payload.replyTo = updates.replyTo || null;
+    if (Object.keys(payload).length === 0) {
+      throw new Error("No identity fields to update.");
+    }
 
     const R = await this.jmap({
       using: [CORE, MAIL, SUBMIT],
@@ -460,15 +463,33 @@ export class JMAPClient {
       throw new Error(errorResponse?.[1]?.description || "Failed to update identity");
     }
 
-    const updated = setResponse[1]?.updated?.[identityId];
-    if (!updated) {
+    const updatedMap = setResponse[1]?.updated;
+    const updated =
+      updatedMap && Object.prototype.hasOwnProperty.call(updatedMap, identityId)
+        ? updatedMap[identityId]
+        : null;
+    if (!updatedMap || !Object.prototype.hasOwnProperty.call(updatedMap, identityId)) {
       const notUpdated = setResponse[1]?.notUpdated?.[identityId];
+      if (notUpdated?.properties) {
+        const propErrors = Object.entries(notUpdated.properties)
+          .map(([prop, err]) => `${prop}: ${err}`)
+          .join(", ");
+        throw new Error(`Invalid property: ${propErrors}`);
+      }
+      const detail =
+        notUpdated?.description ||
+        notUpdated?.type ||
+        setResponse[1]?.description ||
+        setResponse[1]?.type;
+      if (detail) {
+        throw new Error(detail);
+      }
       throw new Error(
-        notUpdated?.description || notUpdated?.type || "Failed to update identity"
+        `Failed to update identity: ${JSON.stringify(setResponse[1] || {})}`
       );
     }
 
-    return updated;
+    return updated ?? true;
   }
 
   /* ---------- queries & changes ---------- */

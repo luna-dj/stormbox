@@ -51,6 +51,8 @@ export default {
     const identityName = ref('')
     const identityEmail = ref('')
     const identityId = ref(null)
+    const identityOriginalName = ref('')
+    const identityOriginalEmail = ref('')
 
     const escapeHtml = (str) => {
       return String(str)
@@ -86,6 +88,8 @@ export default {
       identityId.value = identity.id
       identityName.value = identity.name || ''
       identityEmail.value = identity.email || ''
+      identityOriginalName.value = identity.name || ''
+      identityOriginalEmail.value = identity.email || ''
       identityEditorOpen.value = true
     }
 
@@ -94,16 +98,29 @@ export default {
       identityId.value = null
       identityName.value = ''
       identityEmail.value = ''
+      identityOriginalName.value = ''
+      identityOriginalEmail.value = ''
     }
 
     const saveIdentity = () => {
       if (!identityId.value) return
-      emit('update:identity', {
-        id: identityId.value,
-        name: identityName.value.trim(),
-        email: identityEmail.value.trim()
-      })
+      const name = identityName.value.trim()
+      const email = identityEmail.value.trim()
+      const updates = {}
+      if (name !== identityOriginalName.value) updates.name = name
+      if (email !== identityOriginalEmail.value) updates.email = email
+      if (Object.keys(updates).length === 0) {
+        closeIdentityEditor()
+        return
+      }
+      emit('update:identity', { id: identityId.value, updates })
       closeIdentityEditor()
+    }
+
+    const hideAutocomplete = () => {
+      window.setTimeout(() => {
+        showAutocomplete.value = false
+      }, 200)
     }
 
     const ensureEditor = () => {
@@ -112,6 +129,7 @@ export default {
         import('quill').then(({ default: Quill }) => {
           quill = new Quill('#c-editor', {
             theme: 'snow',
+            placeholder: 'Body…',
             modules: {
               toolbar: [
                 [{ header: [1, 2, false] }],
@@ -222,9 +240,12 @@ export default {
       identityEditorOpen,
       identityName,
       identityEmail,
+      identityOriginalName,
+      identityOriginalEmail,
       openIdentityEditor,
       closeIdentityEditor,
-      saveIdentity
+      saveIdentity,
+      hideAutocomplete
     }
   }
 }
@@ -280,7 +301,7 @@ export default {
         placeholder="alice@example.com, Bob &lt;bob@example.com&gt;"
         autocomplete="off"
         @focus="showAutocomplete = true"
-        @blur="setTimeout(() => showAutocomplete = false, 200)"
+        @blur="hideAutocomplete"
         @input="$emit('update:compose', { ...compose, to: $event.target.value })"
       >
       <EmailAutocomplete
@@ -306,22 +327,23 @@ export default {
           placeholder="Add a signature"
           @input="$emit('update:signature', $event.target.value)"
         ></textarea>
-        <label class="signature-toggle">
-          <input
-            type="checkbox"
-            :checked="signatureEnabled"
-            @change="$emit('update:signatureEnabled', $event.target.checked)"
-          />
-          Use signature when sending
-        </label>
-        <button type="button" class="btn-ghost" @click="insertSignature">
-          Insert signature into body
-        </button>
+        <div class="signature-actions">
+          <label class="signature-toggle">
+            <input
+              type="checkbox"
+              :checked="signatureEnabled"
+              @change="$emit('update:signatureEnabled', $event.target.checked)"
+            />
+            Use signature when sending
+          </label>
+          <button type="button" class="btn-ghost" @click="insertSignature">
+            Insert signature into body
+          </button>
+        </div>
       </div>
     </div>
 
-    <div class="row">
-      <label>Body</label>
+    <div class="row body-row">
       <div id="c-editor" class="editor"></div>
     </div>
 
@@ -340,8 +362,9 @@ export default {
       <div class="identity-editor-body">
         <label>Name</label>
         <input v-model="identityName" type="text" placeholder="Display name">
-        <label>Email</label>
-        <input v-model="identityEmail" type="email" placeholder="address@example.com">
+        <label>Email (read-only)</label>
+        <input v-model="identityEmail" type="email" placeholder="address@example.com" readonly>
+        <div class="identity-hint">Email updates are disabled by the server.</div>
       </div>
       <div class="identity-editor-actions">
         <button class="btn-ghost" @click="closeIdentityEditor">Cancel</button>
@@ -373,6 +396,11 @@ export default {
 .compose .row input,
 .compose .row select {
   width: 100%;
+}
+
+.compose .row.body-row {
+  grid-template-columns: 1fr;
+  align-items: stretch;
 }
 
 .from-row {
@@ -450,6 +478,29 @@ export default {
   font-size: 13px;
 }
 
+.signature-actions {
+  display: grid;
+  gap: 8px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .signature-actions {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+
+  .signature-toggle {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .signature-actions .btn-ghost {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 .identity-editor-overlay {
   position: fixed;
   inset: 0;
@@ -504,6 +555,35 @@ export default {
   color: var(--text);
 }
 
+.identity-editor-body input[readonly] {
+  opacity: 0.75;
+  cursor: not-allowed;
+}
+
+.identity-hint {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .compose {
+    padding: 10px 12px;
+  }
+
+  .compose .row {
+    grid-template-columns: 1fr;
+  }
+
+  .from-row {
+    grid-template-columns: 1fr;
+  }
+
+  #c-editor {
+    min-height: 240px;
+  }
+
+}
+
 .identity-editor-actions {
   display: flex;
   justify-content: flex-end;
@@ -530,8 +610,6 @@ export default {
   min-width: 0;
   min-height: 320px;
   /* larger default editor */
-  grid-column: 2 / 3;
-  /* ensure full width of the input column */
 }
 
 /* Ensure all Quill pieces stretch (scoped -> deep to reach Quill DOM) */
@@ -563,5 +641,10 @@ export default {
 
 #c-editor :deep(.ql-editor) {
   color: var(--text);
+}
+
+#c-editor :deep(.ql-editor.ql-blank::before) {
+  color: var(--muted);
+  font-style: normal;
 }
 </style>
