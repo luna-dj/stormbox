@@ -1,6 +1,7 @@
 <script>
 import { computed, provide, ref, reactive, watch, unref, nextTick } from 'vue'
 import { useTheme } from './composables/useTheme.js'
+import { useOffline } from './composables/useOffline.js'
 import LoginForm from './components/LoginForm.vue'
 import AccountProvider from './components/AccountProvider.vue'
 import FolderList from './components/FolderList.vue'
@@ -32,6 +33,7 @@ export default {
   },
   setup() {
     const { theme, cycle } = useTheme()
+    const { isOnline, isLocalMode, enableLocalMode, disableLocalMode } = useOffline()
     const foldersOpen = ref(false)
     const sessions = ref([])
     const accounts = computed(() =>
@@ -611,7 +613,11 @@ export default {
       cycle,
       serverName,
       currentMailboxName,
-      themeTitle: computed(() => theme.value === 'system' ? 'Theme: system (click to light)' : (theme.value === 'light' ? 'Theme: light (click to dark)' : 'Theme: dark (click to system)'))
+      themeTitle: computed(() => theme.value === 'system' ? 'Theme: system (click to light)' : (theme.value === 'light' ? 'Theme: light (click to dark)' : 'Theme: dark (click to system)')),
+      isOnline,
+      isLocalMode,
+      enableLocalMode,
+      disableLocalMode
     }
   }
 }
@@ -679,6 +685,12 @@ export default {
           <path d="M20 0H4a4 4 0 00-4 4v16a4 4 0 004 4h16a4 4 0 004-4V4a4 4 0 00-4-4zm-2 12h-6v6h-4v-6H4v-4h4V2h4v6h6v4z"/>
         </svg>
         <span>New Contact</span>
+      </button>
+      <button v-if="isLocalMode || !isOnline" class="header-btn" :title="isLocalMode ? 'Local mode enabled' : 'Offline mode'" aria-label="Offline">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+        </svg>
+        <span>{{ isLocalMode ? 'Local' : 'Offline' }}</span>
       </button>
       <button class="theme-toggle" @click="cycle" :title="themeTitle" aria-label="Theme: system/light/dark">
         <!-- System icon (computer) -->
