@@ -57,6 +57,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  const url = new URL(event.request.url);
+  const origin = self.location.origin;
+  
+  // Only cache requests from our own origin
+  // Skip all external requests (images, favicons, API calls, etc.)
+  if (url.origin !== origin) {
+    // Don't intercept external requests - let browser handle them directly
+    // This prevents CORS issues and service worker errors
+    return;
+  }
+
+  // Skip image/favicon requests even from our own origin (if any)
+  if (
+    url.pathname.includes('favicon') ||
+    url.pathname.match(/\.(ico|png|jpg|jpeg|gif|svg|webp)$/i)
+  ) {
+    return;
+  }
+
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       // Return cached version if available
