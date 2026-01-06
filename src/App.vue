@@ -7,6 +7,7 @@ import FolderList from './components/FolderList.vue'
 import MessageList from './components/MessageList.vue'
 import ComposePanel from './components/ComposePanel.vue'
 import MessageDetail from './components/MessageDetail.vue'
+import ThreadConversationView from './components/ThreadConversationView.vue'
 import ContactEditor from './components/ContactEditor.vue'
 import ContactManager from './components/ContactManager.vue'
 import DraftsList from './components/DraftsList.vue'
@@ -22,6 +23,7 @@ export default {
     MessageList,
     ComposePanel,
     MessageDetail,
+    ThreadConversationView,
     ContactEditor,
     ContactManager,
     DraftsList,
@@ -64,6 +66,33 @@ export default {
     watch(activeCalendarStore, (store) => {
       calendarStoreProxy.value = store || null
     }, { immediate: true })
+    const initializedStores = new WeakSet()
+    const getInboxId = (store) => {
+      const boxes = store?.mailboxes?.value || []
+      const byRole = boxes.find((m) => (m.role || '').toLowerCase() === 'inbox')
+      if (byRole?.id) return byRole.id
+      const byName = boxes.find((m) => (m.name || '').toLowerCase() === 'inbox')
+      return byName?.id || null
+    }
+    watch(
+      () => ({
+        store: activeEmailStore.value,
+        connected: activeEmailStore.value?.connected?.value,
+        mailboxId: activeEmailStore.value?.currentMailboxId?.value,
+        mailboxCount: activeEmailStore.value?.mailboxes?.value?.length || 0
+      }),
+      ({ store, connected, mailboxId, mailboxCount }) => {
+        if (!store || !connected || !mailboxId || mailboxCount === 0) return
+        if (initializedStores.has(store)) return
+        initializedStores.add(store)
+        const inboxId = getInboxId(store) || mailboxId
+        if (store.currentMailboxId?.value !== inboxId) {
+          store.currentMailboxId.value = inboxId
+        }
+        store.switchMailbox?.(inboxId)
+      },
+      { immediate: true }
+    )
 
     const serverName = computed(() => {
       const url = "https://hivepost.nl"
@@ -179,8 +208,18 @@ export default {
     const selectedEmailId = computed({
       get: () => unref(activeEmailStore.value?.selectedEmailId) || null,
       set: (value) => {
-        if (activeEmailStore.value?.selectedEmailId) {
-          activeEmailStore.value.selectedEmailId.value = value
+        const store = activeEmailStore.value
+        if (!store) return
+        // Use selectMessage to properly set the selected email and load its details
+        if (value) {
+          store.selectMessage?.(value)
+        } else {
+          // Clear selection
+          if (store.selectedEmailId && typeof store.selectedEmailId === 'object' && 'value' in store.selectedEmailId) {
+            store.selectedEmailId.value = null
+          } else if (store.backToList) {
+            store.backToList()
+          }
         }
       }
     })
@@ -245,6 +284,7 @@ export default {
       }
     })
     const visibleMessages = computed(() => unref(activeEmailStore.value?.visibleMessages) || [])
+    const groupedThreads = computed(() => unref(activeEmailStore.value?.groupedThreads) || [])
     const totalEmailsCount = computed(() => unref(activeEmailStore.value?.totalEmailsCount) || 0)
     const detail = computed(() => unref(activeEmailStore.value?.detail) || {})
     const attachments = computed(() => unref(activeEmailStore.value?.attachments) || [])
@@ -254,6 +294,22 @@ export default {
     const rawMessage = computed(() => unref(activeEmailStore.value?.rawMessage) || null)
     const showHeaders = computed(() => !!unref(activeEmailStore.value?.showHeaders))
     const showRawMessage = computed(() => !!unref(activeEmailStore.value?.showRawMessage))
+    const listMode = ref('threads')
+    const selectedThreadId = computed(() => {
+      if (!selectedEmailId.value) return null
+      const match = groupedThreads.value.find((thread) =>
+        (thread.emails || []).some((email) => email.id === selectedEmailId.value)
+      )
+      return match?.realThreadId || match?.threadId || null
+    })
+    const selectedThread = computed(() => {
+      if (!selectedThreadId.value) return null
+      return groupedThreads.value.find((thread) =>
+        thread.threadId === selectedThreadId.value || thread.realThreadId === selectedThreadId.value
+      ) || null
+    })
+    const showThreadDetail = computed(() => (selectedThread.value?.emailCount || 0) > 1)
+    const emailClient = computed(() => unref(activeEmailStore.value?.client) || null)
 
     const eventEditorOpen = computed(() => !!unref(activeCalendarStore.value?.eventEditorOpen))
     const editingEvent = computed(() => unref(activeCalendarStore.value?.editingEvent) || null)
@@ -347,6 +403,13 @@ export default {
     const selectMessage = (id) => activeEmailStore.value?.selectMessage?.(id)
     const backToList = () => activeEmailStore.value?.backToList?.()
     const replyToCurrent = () => activeEmailStore.value?.replyToCurrent?.()
+    const replyToEmail = (email) => {
+      if (email?.id) {
+        // Use selectMessage instead of directly setting selectedEmailId
+        selectMessage(email.id)
+      }
+      replyToCurrent()
+    }
     const deleteCurrent = () => activeEmailStore.value?.deleteCurrent?.()
     const moveEmailToFolder = (mailboxId) => activeEmailStore.value?.moveEmailToFolder?.(mailboxId)
     const toggleCompose = () => activeEmailStore.value?.toggleCompose?.()
@@ -354,6 +417,14 @@ export default {
     const send = () => activeEmailStore.value?.send?.()
     const updateIdentity = (id, updates) => activeEmailStore.value?.updateIdentity?.(id, updates)
     const download = (attachment) => activeEmailStore.value?.download?.(attachment)
+    const downloadThreadAttachment = (blobId, name, type) => {
+      if (!blobId) return
+      activeEmailStore.value?.download?.({ blobId, name, type })
+    }
+    const markThreadRead = (emailId, seen) => {
+      if (!emailId) return
+      activeEmailStore.value?.client?.setSeen?.(emailId, !!seen)
+    }
     const onVirtRange = (idx) => activeEmailStore.value?.onVirtRange?.(idx)
     const setSignatureText = (value) => activeEmailStore.value?.setSignatureText?.(value)
     const setSignatureEnabled = (value) => activeEmailStore.value?.setSignatureEnabled?.(value)
@@ -461,6 +532,7 @@ export default {
       viewMode,
       filterText,
       visibleMessages,
+      groupedThreads,
       totalEmailsCount,
       detail,
       attachments,
@@ -470,6 +542,11 @@ export default {
       rawMessage,
       showHeaders,
       showRawMessage,
+      listMode,
+      selectedThreadId,
+      selectedThread,
+      showThreadDetail,
+      emailClient,
       eventEditorOpen,
       editingEvent,
       connect,
@@ -487,6 +564,7 @@ export default {
       selectMessage,
       backToList,
       replyToCurrent,
+      replyToEmail,
       deleteCurrent,
       moveEmailToFolder,
       toggleCompose,
@@ -494,6 +572,8 @@ export default {
       send,
       updateIdentity,
       download,
+      downloadThreadAttachment,
+      markThreadRead,
       onVirtRange,
       setSignatureText,
       setSignatureEnabled,
@@ -653,7 +733,8 @@ export default {
 
         <!-- Message List -->
         <MessageList :current-mailbox-id="currentMailboxId" :current-mailbox-name="currentMailboxName" :selected-email-id="selectedEmailId" :view-mode="viewMode"
-          :visible-messages="visibleMessages" :total-count="totalEmailsCount" @set-view="setViewMode"
+          :visible-messages="visibleMessages" :grouped-threads="groupedThreads" :list-mode="listMode" :total-count="totalEmailsCount" @set-view="setViewMode"
+          @update:list-mode="listMode = $event"
           @select-message="selectMessage" @virt-range="onVirtRange" @update:filter-text="filterText = $event" />
       </template>
 
@@ -702,7 +783,22 @@ export default {
         />
 
         <!-- Message Detail -->
+        <ThreadConversationView
+          v-if="selectedThreadId && showThreadDetail"
+          :thread-id="selectedThreadId"
+          :thread-emails="selectedThread?.emails"
+          :initial-email-id="selectedEmailId"
+          :client="emailClient"
+          @back="backToList"
+          @reply="replyToEmail"
+          @reply-all="replyToEmail"
+          @forward="replyToEmail"
+          @download="downloadThreadAttachment"
+          @mark-as-read="markThreadRead"
+        />
+
         <MessageDetail 
+          v-else
           :detail="detail" 
           :attachments="attachments" 
           :body-html="bodyHtml" 

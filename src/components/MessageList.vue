@@ -2,11 +2,13 @@
 import { ref, computed, watch, onMounted } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import Avatar from './Avatar.vue'
+import ThreadListItem from './ThreadListItem.vue'
 
 export default {
   name: 'MessageList',
   components: {
-    Avatar
+    Avatar,
+    ThreadListItem
   },
   props: {
     currentMailboxId: String,
@@ -14,11 +16,18 @@ export default {
     selectedEmailId: String,
     viewMode: String,
     visibleMessages: Array,
+    groupedThreads: Array,
+    listMode: {
+      type: String,
+      default: 'threads'
+    },
     totalCount: Number
   },
-  emits: ['set-view', 'select-message', 'virt-range', 'update:filterText'],
+  emits: ['set-view', 'select-message', 'virt-range', 'update:filterText', 'update:list-mode'],
   setup(props, { emit }) {
     const filterText = ref('')
+    const listMode = ref(props.listMode || (props.viewMode === 'conversations' ? 'threads' : 'messages'))
+    const expandedThreads = ref(new Set())
     const rows = ref(null)
     const colsRef = ref(null)
     const rowHeight = ref(56)
@@ -69,7 +78,8 @@ export default {
 
     // Virtualizer over visibleMessages
     const items = computed(() => props.visibleMessages || [])
-    const isFiltered = computed(() => !!filterText.value || props.viewMode !== 'all')
+    const threads = computed(() => props.groupedThreads || [])
+    const isFiltered = computed(() => !!filterText.value || (props.viewMode !== 'all' && props.viewMode !== 'conversations'))
 
     // Use total count when not filtering, otherwise use actual items length
     const virtualCount = computed(() => {
@@ -150,9 +160,53 @@ export default {
       emit('update:filterText', newValue)
     })
 
+    watch(() => props.listMode, (value) => {
+      if (value && value !== listMode.value) {
+        listMode.value = value
+      }
+    })
+
+    watch(() => props.viewMode, (value) => {
+      // When switching to conversations view, automatically switch to threads mode
+      if (value === 'conversations') {
+        listMode.value = 'threads'
+      } else {
+        // When switching away from conversations, switch to messages if in threads mode
+        if (listMode.value === 'threads') {
+          listMode.value = 'messages'
+        }
+      }
+    }, { immediate: true })
+
+    watch(listMode, (value) => {
+      emit('update:list-mode', value)
+    })
+
     // Clear filter function
     const clearFilter = () => {
       filterText.value = ''
+    }
+
+    const isThreadView = computed(() => listMode.value === 'threads')
+
+    const handleConversationsClick = () => {
+      listMode.value = 'threads'
+      emit('set-view', 'conversations')
+    }
+
+    const handleMessagesClick = () => {
+      listMode.value = 'messages'
+      emit('set-view', 'all')
+    }
+
+    const toggleThread = (threadId) => {
+      const next = new Set(expandedThreads.value)
+      if (next.has(threadId)) {
+        next.delete(threadId)
+      } else {
+        next.add(threadId)
+      }
+      expandedThreads.value = next
     }
 
     // Console diagnostics
@@ -192,6 +246,13 @@ export default {
     return {
       filterText,
       clearFilter,
+      listMode,
+      isThreadView,
+      threads,
+      expandedThreads,
+      toggleThread,
+      handleConversationsClick,
+      handleMessagesClick,
       totalCount: computed(() => props.totalCount),
       rows,
       colsRef,
@@ -223,7 +284,7 @@ export default {
   <section class="list">
     <div class="list-header">
       <div class="folder-title">
-        <span class="folder-name">{{ currentMailboxName || 'Mailbox' }}</span>
+        <span class="folder-name">{{ viewMode === 'conversations' ? 'Conversations' : (currentMailboxName || 'Mailbox') }}</span>
         <span class="folder-count">{{ totalCount ?? '…' }}</span>
       </div>
       <div class="folder-actions">
@@ -268,6 +329,14 @@ export default {
           Unread
         </button>
       </div>
+      <div class="seg">
+        <button :class="{ active: isThreadView }" @click="handleConversationsClick">
+          Conversations
+        </button>
+        <button :class="{ active: !isThreadView }" @click="handleMessagesClick">
+          Messages
+        </button>
+      </div>
       <div id="folderTotal" class="count">{{ totalCount ?? '…' }} messages</div>
     </div>
 
@@ -278,7 +347,22 @@ export default {
       | rows h/ch/sh: {{ rowsMetrics.h }}/{{ rowsMetrics.ch }}/{{ rowsMetrics.sh }}
     </div>
 
-    <div id="rows" ref="rows">
+    <div v-if="isThreadView" class="thread-rows">
+      <div v-if="threads.length === 0" class="empty-state">
+        {{ viewMode === 'conversations' ? 'No conversations to show' : 'No threads to show' }}
+      </div>
+      <ThreadListItem
+        v-for="thread in threads"
+        :key="thread.threadId"
+        :thread="thread"
+        :is-expanded="expandedThreads.has(thread.threadId)"
+        :selected-email-id="selectedEmailId"
+        :expanded-emails="thread.emails"
+        @toggle-expand="toggleThread(thread.threadId)"
+        @email-select="$emit('select-message', $event)"
+      />
+    </div>
+    <div v-else id="rows" ref="rows">
       <div class="cols" ref="colsRef">
         <div></div>
         <div>Correspondents</div>
@@ -472,6 +556,18 @@ export default {
 .count {
   color: var(--muted);
   font-size: 12px;
+}
+
+.thread-rows {
+  overflow-y: auto;
+  min-height: 0;
+  height: 100%;
+}
+
+.thread-rows .empty-state {
+  padding: 16px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .clear-filter {

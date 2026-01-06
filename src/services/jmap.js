@@ -999,6 +999,7 @@ export class JMAPClient {
     html,
     draftsId,
     sentId,
+    inReplyToEmailId,
   }) {
     const createId = "m1",
       submitId = "s1";
@@ -1019,6 +1020,29 @@ export class JMAPClient {
         ]
       : [{ type: "text/plain", partId: "p1" }, { p1: { value: text || "" } }];
 
+    // Get reply headers if this is a reply
+    let headers = {};
+    if (inReplyToEmailId) {
+      try {
+        const originalHeaders = await this.getEmailHeaders(inReplyToEmailId);
+        const messageId = originalHeaders["message-id"] || originalHeaders["Message-ID"];
+        const references = originalHeaders["references"] || originalHeaders["References"];
+        
+        if (messageId) {
+          headers["In-Reply-To"] = messageId;
+          // Build References header: original References + original Message-ID
+          if (references) {
+            headers["References"] = `${references} ${messageId}`;
+          } else {
+            headers["References"] = messageId;
+          }
+        }
+      } catch (e) {
+        console.debug("[JMAP] Failed to get reply headers:", e);
+        // Continue without reply headers if we can't get them
+      }
+    }
+
     // Build email create object
     const emailCreate = {
       ...(targetBox && { mailboxIds: { [targetBox]: true } }),
@@ -1028,6 +1052,7 @@ export class JMAPClient {
       subject,
       bodyStructure,
       bodyValues,
+      ...(Object.keys(headers).length > 0 && { headers }),
     };
 
     // Build submission update object

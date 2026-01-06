@@ -10,6 +10,7 @@ export default {
   },
   props: {
     threadId: String,
+    threadEmails: Array,
     initialEmailId: String,
     client: Object,
   },
@@ -20,27 +21,24 @@ export default {
     const expandedIds = ref(new Set())
     const allowExternalContent = ref(new Set())
     const hasBlockedContent = ref(new Set())
+    const showOlder = ref(false)
 
-    // Auto-expand most recent email AND all unread emails when thread loads
+    // Auto-expand most recent email when thread loads
     watch(() => emails.value, (newEmails) => {
       if (newEmails.length > 0) {
         const idsToExpand = new Set()
         
         // Always expand most recent
         idsToExpand.add(newEmails[0].id)
-        
-        // Also expand all unread emails
-        newEmails.forEach(email => {
-          if (!email.keywords?.$seen) {
-            idsToExpand.add(email.id)
-          }
-        })
-        
         expandedIds.value = idsToExpand
       }
     }, { immediate: true })
 
     const loadThread = async () => {
+      if (props.threadEmails?.length) {
+        emails.value = props.threadEmails
+        return
+      }
       if (!props.threadId || !props.client) return
       
       loading.value = true
@@ -58,7 +56,7 @@ export default {
       loadThread()
     })
 
-    watch(() => props.threadId, () => {
+    watch([() => props.threadId, () => props.threadEmails], () => {
       loadThread()
     })
 
@@ -211,6 +209,7 @@ export default {
       emails,
       loading,
       expandedIds,
+      showOlder,
       allowExternalContent,
       hasBlockedContent,
       toggleExpanded,
@@ -249,12 +248,25 @@ export default {
 
     <!-- Email Cards -->
     <div v-else class="thread-emails">
+      <button
+        v-if="emails.length > 1"
+        class="thread-toggle"
+        @click="showOlder = !showOlder"
+        type="button"
+      >
+        <span class="thread-toggle-icon">{{ showOlder ? 'v' : '>' }}</span>
+        <span class="thread-toggle-text">
+          {{ showOlder ? 'Hide earlier messages' : `Show earlier messages (${emails.length - 1})` }}
+        </span>
+      </button>
+
       <div v-for="(email, index) in emails" :key="email.id" class="email-card"
         :class="{ 
           expanded: expandedIds.has(email.id),
           unread: !email.keywords?.$seen,
           latest: index === 0
-        }">
+        }"
+        v-show="index === 0 || showOlder">
         
         <!-- Card Header - Always visible -->
         <button class="email-card-header" @click="toggleExpanded(email.id)">
@@ -412,6 +424,32 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.thread-toggle {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  width: fit-content;
+}
+
+.thread-toggle:hover {
+  background: var(--rowHover);
+}
+
+.thread-toggle-icon {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.thread-toggle-text {
+  font-size: 13px;
 }
 
 .email-card {

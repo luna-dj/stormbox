@@ -388,8 +388,8 @@ export default {
   height: 72vh;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: var(--panel);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  background: linear-gradient(180deg, rgba(17, 19, 26, 0.98), rgba(10, 12, 18, 0.98));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
   z-index: 1400;
 }
 
@@ -410,7 +410,7 @@ export default {
   justify-content: space-between;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
-  background: var(--panel2);
+  background: linear-gradient(90deg, rgba(22, 26, 38, 0.98), rgba(16, 19, 28, 0.98));
   border-radius: 12px 12px 0 0;
 }
 
@@ -423,7 +423,8 @@ export default {
 .compose-window-title {
   font-weight: 600;
   color: var(--text);
-  font-size: 13px;
+  font-size: 14px;
+  letter-spacing: 0.02em;
 }
 
 .compose-window-close {
@@ -442,20 +443,21 @@ export default {
   padding: 12px 16px;
   border-bottom: 1px solid var(--border);
   display: grid;
-  gap: 8px;
+  gap: 10px;
+  background: rgba(11, 13, 19, 0.5);
 }
 
 .compose .row {
   display: grid;
-  grid-template-columns: 70px minmax(0, 1fr);
-  gap: 10px;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
   align-items: center;
   margin: 0;
 }
 
 .compose-header .row {
-  padding: 6px 0;
-  border-bottom: 1px solid var(--border);
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(46, 52, 72, 0.6);
 }
 
 .compose-header .row:last-child {
@@ -469,10 +471,18 @@ export default {
 .compose .row input,
 .compose .row select {
   width: 100%;
-  background: transparent;
-  border: 0;
+  background: rgba(15, 18, 26, 0.9);
+  border: 1px solid rgba(46, 52, 72, 0.9);
+  border-radius: 10px;
   color: var(--text);
-  padding: 6px 0;
+  padding: 8px 10px;
+}
+
+.compose .row label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
 }
 
 /* Text inputs */
@@ -486,6 +496,20 @@ export default {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 8px;
+}
+
+.btn-ghost {
+  border: 1px solid rgba(84, 92, 118, 0.8);
+  background: transparent;
+  color: var(--text);
+  border-radius: 10px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .signature-row {
@@ -504,10 +528,10 @@ export default {
 
 #c-signature {
   width: 100%;
-  padding: .5rem .65rem;
-  border: 1px solid var(--border);
-  border-radius: .5rem;
-  background: var(--panel2);
+  padding: 0.6rem 0.7rem;
+  border: 1px solid rgba(46, 52, 72, 0.9);
+  border-radius: 10px;
+  background: rgba(15, 18, 26, 0.9);
   color: var(--text);
   resize: vertical;
 }
@@ -722,7 +746,7 @@ export default {
   justify-content: space-between;
   padding: 10px 16px;
   border-top: 1px solid var(--border);
-  background: var(--panel2);
+  background: rgba(15, 18, 26, 0.9);
   border-radius: 0 0 12px 12px;
 }
 
@@ -748,7 +772,7 @@ export default {
   border: 0;
   background: var(--accent);
   color: #fff;
-  padding: 8px 16px;
+  padding: 8px 18px;
   border-radius: 8px;
   font-weight: 600;
   min-width: 88px;

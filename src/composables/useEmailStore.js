@@ -45,6 +45,7 @@ export function useEmailStore(options = {}) {
     subject: "",
     html: "",
     text: "",
+    replyingToEmailId: null, // Store the email ID we're replying to
   });
 
   const signatureText = ref(localStorage.getItem("jmap.signature") || "");
@@ -53,7 +54,7 @@ export function useEmailStore(options = {}) {
   );
 
   // View state
-  const viewMode = ref("all");
+  const viewMode = ref("conversations"); // "all", "unread", "read", or "conversations"
   const filterText = ref("");
   const currentView = ref("mail"); // "mail" or "contacts"
   const selectedContactId = ref(null);
@@ -78,12 +79,71 @@ export function useEmailStore(options = {}) {
     () => mailboxes.value.find((m) => m.id === currentMailboxId.value) || null
   );
 
-  const visibleMessages = computed(() => {
-    let arr = emailsFromQuery.value || [];
+  const normalizeSubject = (subject) => {
+    if (!subject) return null;
+    const raw = String(subject).trim().toLowerCase();
+    if (!raw) return null;
+    const normalized = raw.replace(/^((re|fwd|fw):\s*)+/gi, "").trim();
+    return normalized || null;
+  };
 
-    // Guard against mis-scoped results: only show messages in current mailbox
-    if (currentMailboxId.value) {
-      arr = arr.filter((m) => m.mailboxIds?.[currentMailboxId.value]);
+  const getThreadKey = (email) =>
+    email?.threadId || normalizeSubject(email?.subject) || email?.id;
+
+  const visibleMessages = computed(() => {
+    const currentId = currentMailboxId.value;
+    
+    // For conversations view, use emails from all mailboxes
+    let cached = [];
+    if (viewMode.value === "conversations") {
+      cached = emailsFromAllMailboxes.value || [];
+    } else {
+      // For inbox view, include emails from current mailbox + sent folder (for threading)
+      const emailMap = new Map();
+      (emailsFromQuery.value || []).forEach((email) => {
+        if (email?.id) emailMap.set(email.id, email);
+      });
+      
+      // Also include sent folder emails from cache for proper threading
+      const sentId = sentMailboxId.value;
+      if (sentId && sentId !== currentId) {
+        const sentEmails = getCachedEmails(sentId);
+        sentEmails.forEach((email) => {
+          if (email?.id && !emailMap.has(email.id)) {
+            emailMap.set(email.id, email);
+          }
+        });
+      }
+      cached = Array.from(emailMap.values());
+    }
+    
+    const byId = new Map();
+    cached.forEach((m) => {
+      if (m?.id) byId.set(m.id, m);
+    });
+
+    let arr = Array.from(byId.values());
+
+    // For conversations view, don't filter by current mailbox
+    if (currentId && viewMode.value !== "conversations") {
+      const threadMap = new Map();
+      arr.forEach((email) => {
+        const key = getThreadKey(email);
+        if (!threadMap.has(key)) {
+          threadMap.set(key, { emails: [], hasCurrent: false });
+        }
+        const entry = threadMap.get(key);
+        entry.emails.push(email);
+        if (email.mailboxIds?.[currentId]) {
+          entry.hasCurrent = true;
+        }
+      });
+      arr = [];
+      threadMap.forEach((entry) => {
+        if (entry.hasCurrent) {
+          arr.push(...entry.emails);
+        }
+      });
     }
 
     if (viewMode.value === "unread") arr = arr.filter((m) => !m.isSeen);
@@ -98,6 +158,12 @@ export function useEmailStore(options = {}) {
       );
     }
 
+    arr.sort((a, b) => {
+      const aDate = new Date(a.receivedAt || a.sentAt || 0);
+      const bDate = new Date(b.receivedAt || b.sentAt || 0);
+      return bDate - aDate;
+    });
+
     return arr;
   });
 
@@ -107,16 +173,37 @@ export function useEmailStore(options = {}) {
     const threadMap = new Map();
 
     emails.forEach((email) => {
-      const threadId = email.threadId || email.id; // Fallback to email.id if no threadId
+      if (!email?.id) return;
       
-      if (!threadMap.has(threadId)) {
-        threadMap.set(threadId, {
-          threadId,
+      // Determine thread key: use threadId if available, otherwise use normalized subject
+      let threadKey;
+      if (email.threadId) {
+        // Has threadId - use it directly
+        threadKey = email.threadId;
+      } else {
+        // No threadId - normalize subject to group "Hallo" and "Re: Hallo" together
+        const normalizedSubj = normalizeSubject(email.subject);
+        if (normalizedSubj) {
+          threadKey = normalizedSubj;
+        } else {
+          // No subject - use email id (each email becomes its own thread)
+          threadKey = email.id;
+        }
+      }
+
+      if (!threadMap.has(threadKey)) {
+        threadMap.set(threadKey, {
+          threadId: threadKey,
+          realThreadId: email.threadId || null,
           emails: [],
         });
       }
-      
-      threadMap.get(threadId).emails.push(email);
+
+      // Only add email if it's not already in the thread (avoid duplicates)
+      const thread = threadMap.get(threadKey);
+      if (!thread.emails.find((e) => e.id === email.id)) {
+        thread.emails.push(email);
+      }
     });
 
     // Convert to array and process each thread
@@ -142,6 +229,7 @@ export function useEmailStore(options = {}) {
 
       return {
         threadId: thread.threadId,
+        realThreadId: thread.realThreadId,
         emails: thread.emails,
         latestEmail,
         participantNames: Array.from(participants),
@@ -264,6 +352,25 @@ export function useEmailStore(options = {}) {
         );
 
       await switchMailbox(currentMailboxId.value);
+      
+      // If conversations view is active, prefetch all mailboxes after connection
+      // The watcher will also trigger, but this ensures it happens immediately
+      if (viewMode.value === "conversations") {
+        // Use setTimeout to ensure mailboxes array is fully populated after connection
+        setTimeout(() => {
+          if (mailboxes.value.length > 0) {
+            // Clear prefetched set to allow fresh prefetching
+            prefetchedMailboxes.clear();
+            prefetchingMailboxes.clear();
+            // Prefetch all mailboxes in parallel
+            Promise.all(
+              mailboxes.value.map((mailbox) => primeMailboxCache(mailbox.id))
+            ).catch((e) => {
+              console.debug("[EmailStore] Error prefetching mailboxes for conversations:", e);
+            });
+          }
+        }, 200);
+      }
     } catch (e) {
       status.value = "Failed.";
       let errorMsg = e.message;
@@ -305,6 +412,24 @@ export function useEmailStore(options = {}) {
     boxId,
     sortProp,
   ];
+  const emailProps = [
+    "id",
+    "threadId",
+    "mailboxIds",
+    "subject",
+    "from",
+    "to",
+    "cc",
+    "bcc",
+    "replyTo",
+    "sender",
+    "receivedAt",
+    "sentAt",
+    "preview",
+    "keywords",
+    "hasAttachment",
+    "size",
+  ];
 
   const mailboxInfinite = useInfiniteQuery({
     queryKey: computed(() =>
@@ -325,25 +450,7 @@ export function useEmailStore(options = {}) {
       const ids = qr.ids || [];
       let emails = [];
       if (ids.length) {
-        const props = [
-          "id",
-          "threadId",
-          "mailboxIds",
-          "subject",
-          "from",
-          "to",
-          "cc",
-          "bcc",
-          "replyTo",
-          "sender",
-          "receivedAt",
-          "sentAt",
-          "preview",
-          "keywords",
-          "hasAttachment",
-          "size",
-        ];
-        emails = await client.value.emailGet(ids, props);
+        emails = await client.value.emailGet(ids, emailProps);
       }
       const list = normalizeEmails(emails);
       return { qr, list };
@@ -373,7 +480,114 @@ export function useEmailStore(options = {}) {
     () => mailboxInfinite.data?.value?.pages?.flatMap((p) => p.list || []) || []
   );
 
+  // Get emails from all mailboxes for conversations view
+  const emailsFromAllMailboxes = computed(() => {
+    // Access cacheUpdateTrigger to make this reactive to cache updates
+    cacheUpdateTrigger.value;
+    
+    if (!connected.value || !mailboxes.value.length) return [];
+    const emailMap = new Map(); // Use Map for better performance
+    
+    // Include emails from ALL mailboxes (from cache)
+    // This ensures we get emails from sent, inbox, and all other folders
+    mailboxes.value.forEach((mailbox) => {
+      if (!mailbox?.id) return;
+      
+      // For current mailbox, prefer emailsFromQuery (already loaded via Vue Query)
+      if (mailbox.id === currentMailboxId.value) {
+        emailsFromQuery.value.forEach((email) => {
+          if (email?.id) {
+            emailMap.set(email.id, email);
+          }
+        });
+      } else {
+        // For other mailboxes, read from cache
+        const cached = getCachedEmails(mailbox.id);
+        cached.forEach((email) => {
+          // Avoid duplicates by checking if email ID already exists
+          if (email?.id && !emailMap.has(email.id)) {
+            emailMap.set(email.id, email);
+          }
+        });
+      }
+    });
+    
+    return Array.from(emailMap.values());
+  });
+
+  const findMailboxId = (role, names) => {
+    const byRole = mailboxes.value.find(
+      (m) => (m.role || "").toLowerCase() === role
+    );
+    if (byRole?.id) return byRole.id;
+    const byName = mailboxes.value.find((m) =>
+      names.includes((m.name || "").toLowerCase())
+    );
+    return byName?.id || null;
+  };
+
+  const inboxMailboxId = computed(() =>
+    findMailboxId("inbox", ["inbox"])
+  );
+  const sentMailboxId = computed(() =>
+    findMailboxId("sent", ["sent", "sent items"])
+  );
+
+  const getCachedEmails = (boxId) => {
+    if (!boxId) return [];
+    const box = mailboxes.value.find((m) => m.id === boxId);
+    const sortProp = sortPropForBox(box);
+    const queryKey = emailListKey(boxId, sortProp);
+    const data = queryClient.getQueryData(queryKey);
+    return data?.pages?.flatMap((p) => p.list || []) || [];
+  };
+
+  const prefetchedMailboxes = new Set();
+  const prefetchingMailboxes = new Set();
+  const cacheUpdateTrigger = ref(0); // Trigger for cache updates
+  const primeMailboxCache = async (boxId) => {
+    if (!boxId || !client.value) return;
+    // If already prefetched or currently prefetching, skip
+    if (prefetchedMailboxes.has(boxId) || prefetchingMailboxes.has(boxId)) return;
+    
+    prefetchingMailboxes.add(boxId);
+    try {
+      const box = mailboxes.value.find((m) => m.id === boxId);
+      const sortProp = sortPropForBox(box);
+      const qr = await client.value.emailQuery({
+        mailboxId: boxId,
+        position: 0,
+        limit: PAGE_SIZE,
+        sortProp,
+      });
+      const ids = qr.ids || [];
+      let emails = [];
+      if (ids.length) {
+        emails = await client.value.emailGet(ids, emailProps);
+      }
+      const list = normalizeEmails(emails);
+      const queryKey = emailListKey(boxId, sortProp);
+      queryClient.setQueryData(queryKey, {
+        pages: [{ qr, list }],
+        pageParams: [0],
+      });
+      prefetchedMailboxes.add(boxId);
+      // Trigger reactivity update
+      cacheUpdateTrigger.value++;
+    } catch (e) {
+      console.debug(`[EmailStore] Failed to prefetch mailbox ${boxId}:`, e);
+      // Don't add to prefetchedMailboxes on error so it can be retried
+    } finally {
+      prefetchingMailboxes.delete(boxId);
+    }
+  };
+
   const totalEmailsCount = computed(() => {
+    // For conversations view, count all emails from all mailboxes
+    if (viewMode.value === "conversations") {
+      return emailsFromAllMailboxes.value.length;
+    }
+    
     const firstPage = mailboxInfinite.data?.value?.pages?.[0];
     return (
       firstPage?.qr?.total ??
@@ -382,6 +596,32 @@ export function useEmailStore(options = {}) {
       emailsFromQuery.value.length
     );
   });
+
+  watch(
+    [currentMailboxId, connected, viewMode, () => mailboxes.value.length],
+    ([boxId, isConnected, mode, mailboxCount]) => {
+      if (!isConnected || !mailboxCount) return;
+      // If in conversations view, prefetch all mailboxes
+      if (mode === "conversations") {
+        // Always clear prefetched set to ensure fresh data
+        prefetchedMailboxes.clear();
+        prefetchingMailboxes.clear();
+        // Prefetch all mailboxes in parallel
+        Promise.all(
+          mailboxes.value.map((mailbox) => primeMailboxCache(mailbox.id))
+        ).catch((e) => {
+          console.debug("[EmailStore] Error prefetching mailboxes for conversations:", e);
+        });
+      } else {
+        // Otherwise, just prefetch inbox and sent
+        const inboxId = inboxMailboxId.value;
+        const sentId = sentMailboxId.value;
+        if (inboxId) primeMailboxCache(inboxId);
+        if (sentId) primeMailboxCache(sentId);
+      }
+    },
+    { immediate: true }
+  );
 
   const lastAutoReload = ref(0);
   watch(
@@ -493,9 +733,25 @@ export function useEmailStore(options = {}) {
 
   const selectMessage = async (id) => {
     selectedEmailId.value = id;
-    // Look for message in Vue Query data first
-    const emails = emailsFromQuery.value || [];
+    // Look for message in visibleMessages (includes emails from all mailboxes in threads)
+    // This ensures we can find emails from sent folder even when viewing inbox
+    const emails = visibleMessages.value || [];
     let m = emails.find((x) => x.id === id);
+    
+    // If not found in visibleMessages, try emailsFromQuery (current mailbox)
+    if (!m) {
+      const currentEmails = emailsFromQuery.value || [];
+      m = currentEmails.find((x) => x.id === id);
+    }
+    
+    // If still not found, try searching all cached mailboxes
+    if (!m) {
+      for (const mailbox of mailboxes.value) {
+        const cached = getCachedEmails(mailbox.id);
+        m = cached.find((x) => x.id === id);
+        if (m) break;
+      }
+    }
 
     if (!m) return clearDetail();
 
@@ -889,16 +1145,37 @@ export function useEmailStore(options = {}) {
   };
 
   const ensureReSubject = (s) => {
-    const t = (s || "(no subject)").trim();
-    return /^re:/i.test(t) ? t : `Re: ${t}`;
+    if (!s) return "Re: (no subject)";
+    const t = s.trim();
+    if (!t) return "Re: (no subject)";
+    // Check if subject already starts with Re:, RE:, re:, etc. (case-insensitive, with optional spaces)
+    if (/^\s*re\s*:/i.test(t)) {
+      return t; // Already has Re: prefix
+    }
+    return `Re: ${t}`;
   };
 
   const replyToCurrent = async () => {
     if (!selectedEmailId.value) return;
 
-    // Look for message in Vue Query data first
-    const emails = emailsFromQuery.value || [];
+    // Look for message in visibleMessages (includes emails from all mailboxes in threads)
+    const emails = visibleMessages.value || [];
     let m = emails.find((x) => x.id === selectedEmailId.value);
+    
+    // If not found in visibleMessages, try emailsFromQuery (current mailbox)
+    if (!m) {
+      const currentEmails = emailsFromQuery.value || [];
+      m = currentEmails.find((x) => x.id === selectedEmailId.value);
+    }
+    
+    // If still not found, try searching all cached mailboxes
+    if (!m) {
+      for (const mailbox of mailboxes.value) {
+        const cached = getCachedEmails(mailbox.id);
+        m = cached.find((x) => x.id === selectedEmailId.value);
+        if (m) break;
+      }
+    }
 
     if (!m) return;
 
@@ -962,6 +1239,7 @@ export function useEmailStore(options = {}) {
     compose.subject = ensureReSubject(m.subject);
     compose.html = replyHtml;
     compose.text = replyText;
+    compose.replyingToEmailId = m.id; // Store the email ID we're replying to
     composeStatus.value = "";
     composeDebug.value = "";
     
@@ -979,6 +1257,7 @@ export function useEmailStore(options = {}) {
       compose.subject = "";
       compose.html = "";
       compose.text = "";
+      compose.replyingToEmailId = null;
       
       // Ensure contacts are loaded for autocomplete
       if (contacts.value.length === 0 && client.value) {
@@ -999,6 +1278,7 @@ export function useEmailStore(options = {}) {
     compose.subject = "";
     compose.html = "";
     compose.text = "";
+    compose.replyingToEmailId = null;
     currentDraftId.value = null;
   };
 
@@ -1109,15 +1389,28 @@ export function useEmailStore(options = {}) {
         }
       }
 
+      // Get reply headers if this is a reply
+      let inReplyToEmailId = null;
+      if (compose.replyingToEmailId) {
+        inReplyToEmailId = compose.replyingToEmailId;
+      }
+
+      // Ensure subject has "Re:" prefix if this is a reply
+      let finalSubject = compose.subject || "";
+      if (inReplyToEmailId && finalSubject && !/^\s*re\s*:/i.test(finalSubject.trim())) {
+        finalSubject = `Re: ${finalSubject.trim()}`;
+      }
+
       const res = await client.value.sendMultipartAlternative({
         from,
         identityId: id.id,
         toList,
-        subject: compose.subject || "",
+        subject: finalSubject,
         text: textBody || "",
         html: htmlBody || "",
         draftsId: client.value.ids.drafts,
         sentId: client.value.ids.sent,
+        inReplyToEmailId,
       });
 
       const methodIssues = extractMethodErrors(res.json);
@@ -1196,7 +1489,15 @@ export function useEmailStore(options = {}) {
   };
 
   const setViewMode = (mode) => {
-    if (["all", "unread"].includes(mode)) viewMode.value = mode;
+    if (["all", "unread", "read", "conversations"].includes(mode)) {
+      viewMode.value = mode;
+      // When switching to conversations view, prefetch all mailboxes
+      if (mode === "conversations" && connected.value) {
+        mailboxes.value.forEach((mailbox) => {
+          primeMailboxCache(mailbox.id);
+        });
+      }
+    }
   };
 
   // Contact editor functions
