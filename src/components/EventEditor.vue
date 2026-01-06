@@ -13,12 +13,13 @@ export default {
   setup(props, { emit }) {
     // Get calendarStore from parent via inject
     const emailStore = inject('emailStore', null)
-    let calendarStore = inject('calendarStore', null)
+    let calendarStoreRef = inject('calendarStore', null)
     
-    if (!calendarStore) {
+    if (!calendarStoreRef) {
       console.warn('[EventEditor] calendarStore not found via inject, creating new instance')
       // Fallback: create a new one if inject fails
-      calendarStore = emailStore ? useCalendarStore(emailStore) : useCalendarStore()
+      const fallbackStore = emailStore ? useCalendarStore(emailStore) : useCalendarStore()
+      calendarStoreRef = ref(fallbackStore)
     }
 
     const title = ref('')
@@ -32,6 +33,9 @@ export default {
     const allDay = ref(false)
 
     const isEditing = computed(() => !!props.event)
+
+    const readValue = (value) => (value && typeof value === 'object' && 'value' in value ? value.value : value)
+    const calendarStore = computed(() => readValue(calendarStoreRef) || null)
 
     const formatDateInput = (date) => {
       const d = date instanceof Date ? date : new Date(date)
@@ -73,8 +77,8 @@ export default {
         startTime.value = formatTimeInput(now)
         endDate.value = formatDateInput(now)
         endTime.value = formatTimeInput(new Date(now.getTime() + 60 * 60 * 1000)) // +1 hour
-        calendarId.value = calendarStore?.selectedCalendarIds?.value?.[0] ||
-          calendarStore?.calendars?.value?.[0]?.id ||
+        calendarId.value = readValue(calendarStore.value?.selectedCalendarIds)?.[0] ||
+          readValue(calendarStore.value?.calendars)?.[0]?.id ||
           ''
         allDay.value = false
       }
@@ -97,7 +101,7 @@ export default {
       }
 
       const eventData = {
-        calendarId: calendarId.value || calendarStore?.calendars?.value?.[0]?.id,
+        calendarId: calendarId.value || readValue(calendarStore.value?.calendars)?.[0]?.id,
         title: title.value.trim(),
         description: description.value.trim(),
         location: location.value.trim(),
@@ -108,9 +112,9 @@ export default {
 
       try {
         if (isEditing.value) {
-          await calendarStore.updateEvent(props.event.id, eventData)
+          await calendarStore.value?.updateEvent?.(props.event.id, eventData)
         } else {
-          await calendarStore.createEvent(eventData)
+          await calendarStore.value?.createEvent?.(eventData)
         }
         emit('save')
         emit('close')
@@ -123,7 +127,7 @@ export default {
       if (!confirm('Are you sure you want to delete this event?')) return
 
       try {
-        await calendarStore.deleteEvent(props.event.id)
+        await calendarStore.value?.deleteEvent?.(props.event.id)
         emit('delete')
         emit('close')
       } catch (e) {
@@ -142,7 +146,7 @@ export default {
       calendarId,
       allDay,
       isEditing,
-      calendars: computed(() => calendarStore?.calendars?.value || []),
+      calendars: computed(() => readValue(calendarStore.value?.calendars) || []),
       save,
       deleteEvent,
     }

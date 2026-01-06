@@ -1,5 +1,5 @@
 <script>
-import { computed, onMounted, onUnmounted, ref, watch, inject } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch, inject, unref } from 'vue'
 import { useCalendarStore } from '../composables/useCalendarStore.js'
 import { useEmailStore } from '../composables/useEmailStore.js'
 
@@ -8,21 +8,54 @@ export default {
   setup() {
     // Get calendarStore from parent via inject
     const emailStore = inject('emailStore', null)
-    let calendarStore = inject('calendarStore', null)
+    let calendarStoreRef = inject('calendarStore', null)
     
-    if (!calendarStore) {
+    if (!calendarStoreRef) {
       console.warn('[CalendarView] calendarStore not found via inject, creating new instance')
       // Fallback: create a new one if inject fails
-      calendarStore = emailStore ? useCalendarStore(emailStore) : useCalendarStore()
+      const fallbackStore = emailStore ? useCalendarStore(emailStore) : useCalendarStore()
+      calendarStoreRef = ref(fallbackStore)
     }
+
+    const readValue = (value) => unref(value)
+
+    const calendarStore = computed(() => readValue(calendarStoreRef) || null)
+    const calendars = computed(() => readValue(calendarStore.value?.calendars) || [])
+    const selectedCalendarIds = computed(() => readValue(calendarStore.value?.selectedCalendarIds) || [])
+    const loadingCalendars = computed(() => !!readValue(calendarStore.value?.loadingCalendars))
+    const loadingEvents = computed(() => !!readValue(calendarStore.value?.loadingEvents))
+    const visibleEvents = computed(() => readValue(calendarStore.value?.visibleEvents) || [])
+    const calendarViewMode = computed({
+      get: () => readValue(calendarStore.value?.calendarViewMode) || 'month',
+      set: (value) => {
+        const target = calendarStore.value?.calendarViewMode
+        if (target && typeof target === 'object' && 'value' in target) {
+          target.value = value
+        } else if (calendarStore.value) {
+          calendarStore.value.calendarViewMode = value
+        }
+      }
+    })
+    const currentDate = computed(() => readValue(calendarStore.value?.currentDate) || new Date())
+    const selectedEventId = computed({
+      get: () => readValue(calendarStore.value?.selectedEventId),
+      set: (value) => {
+        const target = calendarStore.value?.selectedEventId
+        if (target && typeof target === 'object' && 'value' in target) {
+          target.value = value
+        } else if (calendarStore.value) {
+          calendarStore.value.selectedEventId = value
+        }
+      }
+    })
 
     // Initialize on mount
     onMounted(async () => {
       try {
-        if (calendarStore.calendars.length === 0) {
-          await calendarStore.refreshCalendars()
+        if (calendars.value.length === 0) {
+          await calendarStore.value?.refreshCalendars?.()
         }
-        await calendarStore.refreshEvents()
+        await calendarStore.value?.refreshEvents?.()
       } catch (e) {
         console.error('[CalendarView] Failed to initialize:', e)
       }
@@ -48,7 +81,7 @@ export default {
 
     const editEventFromMenu = () => {
       if (!contextMenuEvent.value) return
-      calendarStore.openEventEditor(contextMenuEvent.value)
+      calendarStore.value?.openEventEditor?.(contextMenuEvent.value)
       closeEventMenu()
     }
 
@@ -56,7 +89,7 @@ export default {
       if (!contextMenuEvent.value) return
       if (!confirm('Delete this event?')) return
       try {
-        await calendarStore.deleteEvent(contextMenuEvent.value.id)
+        await calendarStore.value?.deleteEvent?.(contextMenuEvent.value.id)
       } finally {
         closeEventMenu()
       }
@@ -79,8 +112,8 @@ export default {
     })
 
     // Watch for date changes
-    watch(() => calendarStore.currentDate, () => {
-      calendarStore.refreshEvents()
+    watch(currentDate, () => {
+      calendarStore.value?.refreshEvents?.()
     })
 
     // Format date helpers
@@ -93,7 +126,7 @@ export default {
     }
 
     // Get month view data
-    const currentDateValue = computed(() => new Date(calendarStore.currentDate.value))
+    const currentDateValue = computed(() => new Date(currentDate.value))
 
     const monthView = computed(() => {
       const date = new Date(currentDateValue.value)
@@ -139,7 +172,7 @@ export default {
     const getEventsForDate = (date) => {
       if (!date) return []
       const dateStr = date.toISOString().split('T')[0]
-      return calendarStore.visibleEvents.value.filter(event => {
+      return visibleEvents.value.filter(event => {
         const eventDate = new Date(event.start).toISOString().split('T')[0]
         return eventDate === dateStr
       })
@@ -156,10 +189,10 @@ export default {
 
     const titleText = computed(() => {
       const date = new Date(currentDateValue.value)
-      if (calendarStore.calendarViewMode.value === 'day') {
+      if (calendarViewMode.value === 'day') {
         return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
       }
-      if (calendarStore.calendarViewMode.value === 'week') {
+      if (calendarViewMode.value === 'week') {
         const start = new Date(date)
         const day = start.getDay()
         start.setDate(start.getDate() - day)
@@ -184,8 +217,13 @@ export default {
       return new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
     })
 
+    const navigateDate = (direction) => calendarStore.value?.navigateDate?.(direction)
+    const goToToday = () => calendarStore.value?.goToToday?.()
+    const setViewMode = (view) => calendarStore.value?.setViewMode?.(view)
+    const toggleCalendar = (calendarId) => calendarStore.value?.toggleCalendar?.(calendarId)
+    const openEventEditor = (event = null) => calendarStore.value?.openEventEditor?.(event)
+
     return {
-      ...calendarStore,
       monthView,
       formatDate,
       formatTime,
@@ -193,6 +231,19 @@ export default {
       isToday,
       titleText,
       todayText,
+      calendars,
+      selectedCalendarIds,
+      loadingCalendars,
+      loadingEvents,
+      visibleEvents,
+      calendarViewMode,
+      currentDate,
+      selectedEventId,
+      navigateDate,
+      goToToday,
+      setViewMode,
+      toggleCalendar,
+      openEventEditor,
       contextMenuOpen,
       contextMenuX,
       contextMenuY,
@@ -370,6 +421,8 @@ export default {
   padding: 16px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .calendar-nav {
@@ -414,6 +467,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .view-buttons {
@@ -448,6 +502,7 @@ export default {
   cursor: pointer;
   font-size: 14px;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .new-event-btn:hover {
@@ -467,6 +522,22 @@ export default {
   padding: 16px;
   background: var(--panel2);
   overflow-y: auto;
+}
+
+@media (max-width: 720px) {
+  .calendar-header {
+    align-items: flex-start;
+  }
+
+  .calendar-nav {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .calendar-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
 }
 
 .calendar-sidebar h3 {

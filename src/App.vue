@@ -53,7 +53,7 @@ export default {
     const activeCalendarStore = computed(() => activeAccount.value?.calendarStore || null)
 
     const emailStoreProxy = reactive({})
-    const calendarStoreProxy = reactive({})
+    const calendarStoreProxy = ref(null)
 
     const syncProxy = (proxy, store) => {
       Object.keys(proxy).forEach((key) => delete proxy[key])
@@ -61,7 +61,9 @@ export default {
     }
 
     watch(activeEmailStore, (store) => syncProxy(emailStoreProxy, store), { immediate: true })
-    watch(activeCalendarStore, (store) => syncProxy(calendarStoreProxy, store), { immediate: true })
+    watch(activeCalendarStore, (store) => {
+      calendarStoreProxy.value = store || null
+    }, { immediate: true })
 
     const serverName = computed(() => {
       const url = "https://hivepost.nl"
@@ -224,14 +226,7 @@ export default {
         }
       }
     })
-    const currentView = computed({
-      get: () => unref(activeEmailStore.value?.currentView) || 'mail',
-      set: (value) => {
-        if (activeEmailStore.value?.currentView) {
-          activeEmailStore.value.currentView.value = value
-        }
-      }
-    })
+    const currentView = ref('mail')
     const selectedContactId = computed({
       get: () => unref(activeEmailStore.value?.selectedContactId) || null,
       set: (value) => {
@@ -265,8 +260,12 @@ export default {
     const calendarViewMode = computed({
       get: () => unref(activeCalendarStore.value?.calendarViewMode),
       set: (value) => {
-        if (activeCalendarStore.value?.calendarViewMode) {
-          activeCalendarStore.value.calendarViewMode.value = value
+        const target = activeCalendarStore.value?.calendarViewMode
+        if (!target) return
+        if (typeof target === 'object' && 'value' in target) {
+          target.value = value
+        } else {
+          activeCalendarStore.value.calendarViewMode = value
         }
       }
     })
@@ -276,6 +275,17 @@ export default {
         foldersOpen.value = false
       }
     })
+
+    watch(
+      () => unref(activeEmailStore.value?.currentView),
+      (value) => {
+        if (!value) return
+        if (currentView.value !== 'calendar') {
+          currentView.value = value
+        }
+      },
+      { immediate: true }
+    )
 
     const switchViewMode = (view) => {
       activeEmailStore.value?.switchView?.(view)
@@ -301,13 +311,20 @@ export default {
         if (calendarViewMode.value) {
           calendarViewMode.value = 'month'
         }
-        if (currentView.value !== null) {
-          currentView.value = 'calendar'
-        }
+        currentView.value = 'calendar'
         // Refresh calendars when switching to calendar view
         refreshCalendars()
         foldersOpen.value = false
       } else {
+        currentView.value = view
+        const emailView = activeEmailStore.value?.currentView
+        if (emailView) {
+          if (typeof emailView === 'object' && 'value' in emailView) {
+            emailView.value = view
+          } else {
+            activeEmailStore.value.currentView = view
+          }
+        }
         switchViewMode(view)
         foldersOpen.value = false
       }
