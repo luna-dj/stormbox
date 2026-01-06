@@ -74,11 +74,10 @@ export default {
         <aside class="auth-hero">
           <div class="brand-row">
             <div class="logo-wrap">
-              <img class="logo" src="https://www.thunderbird.net/media/svg/logo.svg" alt="Thunderbird logo">
+              <img class="logo" src="/logo.png" alt="Stormbox logo">
             </div>
             <div class="brand-text">
               <p class="brand-kicker">Hivepost</p>
-              <p class="brand-title">Mail Console</p>
             </div>
           </div>
           <h2>{{ canCancel ? 'New session' : 'Welcome back' }}</h2>
