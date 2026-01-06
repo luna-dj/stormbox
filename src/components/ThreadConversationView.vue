@@ -70,6 +70,10 @@ export default {
       expandedIds.value = next
     }
 
+    const handleBack = () => {
+      emit('back')
+    }
+
     const toggleAllowExternal = (emailId) => {
       const next = new Set(allowExternalContent.value)
       next.add(emailId)
@@ -218,6 +222,7 @@ export default {
       getFileIcon,
       formatFileSize,
       getEmailContent,
+      handleBack,
     }
   }
 }
@@ -227,7 +232,7 @@ export default {
   <div class="thread-conversation-view">
     <!-- Header -->
     <div class="thread-header">
-      <button class="back-btn" @click="emit('back')">
+      <button class="back-btn" @click="handleBack">
         ←
       </button>
       <div class="thread-header-info">

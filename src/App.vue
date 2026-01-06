@@ -510,19 +510,18 @@ export default {
       isHandlingPopState = true
       const url = new URL(window.location)
       const emailId = url.searchParams.get('email')
+      const state = event.state || {}
       
-      if (emailId && activeEmailStore.value) {
+      // Use emailId from URL or state
+      const targetEmailId = emailId || state.emailId || null
+      
+      if (targetEmailId && activeEmailStore.value) {
         // Navigate to email
-        activeEmailStore.value.selectMessage?.(emailId)
+        activeEmailStore.value.selectMessage?.(targetEmailId)
       } else {
-        // Navigate back to list
-        if (activeEmailStore.value?.selectedEmailId) {
-          if (typeof activeEmailStore.value.selectedEmailId === 'object' && 'value' in activeEmailStore.value.selectedEmailId) {
-            activeEmailStore.value.selectedEmailId.value = null
-          } else if (activeEmailStore.value.backToList) {
-            activeEmailStore.value.backToList()
-          }
-        }
+        // Navigate back to list - clear selection using the computed setter
+        // This will trigger the setter which calls backToList
+        selectedEmailId.value = null
       }
       
       nextTick(() => {
@@ -545,14 +544,14 @@ export default {
             window.history.pushState({ emailId, view: currentView.value }, '', url)
           }
         } else {
-          // Only push if email was in URL
+          // Only push if email was in URL (going back to list)
           if (currentEmailId) {
             url.searchParams.delete('email')
             window.history.pushState({ view: currentView.value }, '', url)
           }
         }
       }
-    })
+    }, { immediate: false })
     
     // Initialize from URL on mount
     onMounted(() => {
