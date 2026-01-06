@@ -1,4 +1,4 @@
-import { ref, reactive, computed, onMounted } from "vue";
+import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/vue-query";
 import { JMAPClient } from "../services/jmap.js";
 
@@ -76,6 +76,11 @@ export function useEmailStore() {
 
   const visibleMessages = computed(() => {
     let arr = emailsFromQuery.value || [];
+
+    // Guard against mis-scoped results: only show messages in current mailbox
+    if (currentMailboxId.value) {
+      arr = arr.filter((m) => m.mailboxIds?.[currentMailboxId.value]);
+    }
 
     if (viewMode.value === "unread") arr = arr.filter((m) => !m.isSeen);
 
@@ -217,9 +222,21 @@ export function useEmailStore() {
       if (!client.value.ids.inbox && mailboxes.value.length === 0) {
         throw new Error("No mailboxes found. Cannot connect to inbox.");
       }
-      
-      currentMailboxId.value = client.value.ids.inbox || mailboxes.value[0]?.id;
-      
+
+      const findInboxId = () => {
+        const byRole = mailboxes.value.find(
+          (m) => (m.role || "").toLowerCase() === "inbox"
+        );
+        if (byRole?.id) return byRole.id;
+        const byName = mailboxes.value.find(
+          (m) => (m.name || "").toLowerCase() === "inbox"
+        );
+        if (byName?.id) return byName.id;
+        return client.value.ids.inbox || mailboxes.value[0]?.id || null;
+      };
+
+      currentMailboxId.value = findInboxId();
+
       if (!currentMailboxId.value) {
         throw new Error("Failed to determine inbox mailbox ID.");
       }
@@ -241,24 +258,7 @@ export function useEmailStore() {
           currentMailboxId.value
         );
 
-      try {
-        await mailboxInfinite.refetch();
-        if (DEBUG_LOAD) console.debug("[vue-query] Refetch completed");
-      } catch (e) {
-        if (DEBUG_LOAD) console.debug("[vue-query] Refetch error", e);
-      }
-
-      // Load initial pages
-      for (let i = 0; i < 3; i++) {
-        try {
-          await mailboxInfinite.fetchNextPage();
-          if (DEBUG_LOAD)
-            console.debug("[vue-query] fetchNextPage completed", i + 1);
-        } catch (e) {
-          if (DEBUG_LOAD) console.debug("[vue-query] fetchNextPage error", e);
-          break;
-        }
-      }
+      await switchMailbox(currentMailboxId.value);
     } catch (e) {
       status.value = "Failed.";
       let errorMsg = e.message;
@@ -372,6 +372,25 @@ export function useEmailStore() {
       emailsFromQuery.value.length
     );
   });
+
+  const lastAutoReload = ref(0);
+  watch(
+    [totalEmailsCount, emailsFromQuery, currentMailboxId, connected],
+    async ([total, emails, boxId, isConnected]) => {
+      if (!isConnected || !boxId) return;
+      if (total > 0 && (!emails || emails.length === 0)) {
+        const now = Date.now();
+        if (now - lastAutoReload.value < 5000) return;
+        lastAutoReload.value = now;
+        try {
+          await mailboxInfinite.refetch();
+          await mailboxInfinite.fetchNextPage();
+        } catch (e) {
+          console.debug("[vue-query] Auto reload failed:", e);
+        }
+      }
+    }
+  );
 
   // Switch mailbox
   const switchMailbox = async (id) => {

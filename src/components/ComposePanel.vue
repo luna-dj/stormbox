@@ -393,15 +393,19 @@ export default {
   min-width: 0;
 }
 
+.compose .row.body-row {
+  align-items: start;
+}
+
+.compose .row.body-row label {
+  padding-top: 6px;
+}
+
 .compose .row input,
 .compose .row select {
   width: 100%;
 }
 
-.compose .row.body-row {
-  grid-template-columns: 1fr;
-  align-items: stretch;
-}
 
 .from-row {
   display: grid;
@@ -582,6 +586,20 @@ export default {
     min-height: 240px;
   }
 
+  .compose .row.body-row {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .compose .row.body-row label {
+    margin-bottom: 4px;
+  }
+
+  .compose .row.body-row :deep(.ql-toolbar),
+  .compose .row.body-row :deep(.ql-container) {
+    grid-column: 1 / -1;
+  }
+
 }
 
 .identity-editor-actions {
@@ -617,6 +635,11 @@ export default {
 #c-editor :deep(.ql-container),
 #c-editor :deep(.ql-editor) {
   width: 100%;
+}
+
+.compose .row.body-row :deep(.ql-toolbar),
+.compose .row.body-row :deep(.ql-container) {
+  grid-column: 2 / -1;
 }
 
 /* Give the editor body a sensible height within the compose area */

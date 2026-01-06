@@ -294,6 +294,10 @@ main.hide-detail .detail {
   border-right: 1px solid var(--border);
 }
 
+.folders-scrim {
+  display: none;
+}
+
 .mobile-only {
   display: none;
 }
@@ -321,6 +325,7 @@ main.hide-detail .detail {
   }
 
   .folders-scrim {
+    display: block;
     position: fixed;
     inset: 0;
     background: rgba(0, 0, 0, 0.45);
