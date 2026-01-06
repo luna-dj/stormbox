@@ -12,6 +12,7 @@ export function useEmailStore() {
   // Data
   const mailboxes = ref([]);
   const identities = ref([]);
+  const contacts = ref([]);
   const currentMailboxId = ref(null);
   const selectedEmailId = ref(null);
 
@@ -20,6 +21,20 @@ export function useEmailStore() {
   const sending = ref(false);
   const composeStatus = ref("");
   const composeDebug = ref("");
+  const drafts = ref([]);
+  const loadingDrafts = ref(false);
+  const currentDraftId = ref(null);
+
+  // Contact editor state
+  const contactEditorOpen = ref(false);
+  const editingContact = ref(null);
+  const savingContact = ref(false);
+  const contactStatus = ref("");
+  
+  // Address books state
+  const addressBooks = ref([]);
+  const selectedAddressBookId = ref(null);
+
   const compose = reactive({
     fromIdx: 0,
     to: "",
@@ -28,9 +43,16 @@ export function useEmailStore() {
     text: "",
   });
 
+  const signatureText = ref(localStorage.getItem("jmap.signature") || "");
+  const signatureEnabled = ref(
+    localStorage.getItem("jmap.signatureEnabled") !== "false"
+  );
+
   // View state
   const viewMode = ref("all");
   const filterText = ref("");
+  const currentView = ref("mail"); // "mail" or "contacts"
+  const selectedContactId = ref(null);
 
   // Config
   const PAGE_SIZE = 100;
@@ -42,6 +64,10 @@ export function useEmailStore() {
   const bodyHtml = ref("");
   const bodyText = ref("");
   const cidUrls = reactive({});
+  const emailHeaders = ref(null);
+  const rawMessage = ref(null);
+  const showHeaders = ref(false);
+  const showRawMessage = ref(false);
 
   // Computed properties
   const currentBox = computed(
@@ -63,6 +89,63 @@ export function useEmailStore() {
     }
 
     return arr;
+  });
+
+  // Group emails by threadId
+  const groupedThreads = computed(() => {
+    const emails = visibleMessages.value || [];
+    const threadMap = new Map();
+
+    emails.forEach((email) => {
+      const threadId = email.threadId || email.id; // Fallback to email.id if no threadId
+      
+      if (!threadMap.has(threadId)) {
+        threadMap.set(threadId, {
+          threadId,
+          emails: [],
+        });
+      }
+      
+      threadMap.get(threadId).emails.push(email);
+    });
+
+    // Convert to array and process each thread
+    return Array.from(threadMap.values()).map((thread) => {
+      // Sort emails by receivedAt (most recent first)
+      thread.emails.sort((a, b) => {
+        const aDate = new Date(a.receivedAt || a.sentAt || 0);
+        const bDate = new Date(b.receivedAt || b.sentAt || 0);
+        return bDate - aDate;
+      });
+
+      const latestEmail = thread.emails[0];
+      
+      // Get unique participant names
+      const participants = new Set();
+      thread.emails.forEach((e) => {
+        const from = e.from?.[0];
+        if (from) {
+          const name = from.name || from.email || 'Unknown';
+          participants.add(name);
+        }
+      });
+
+      return {
+        threadId: thread.threadId,
+        emails: thread.emails,
+        latestEmail,
+        participantNames: Array.from(participants),
+        hasUnread: thread.emails.some((e) => !e.isSeen),
+        hasStarred: thread.emails.some((e) => e.keywords?.$flagged),
+        hasAttachment: thread.emails.some((e) => e.hasAttachment),
+        emailCount: thread.emails.length,
+      };
+    }).sort((a, b) => {
+      // Sort threads by latest email date (most recent first)
+      const aDate = new Date(a.latestEmail.receivedAt || a.latestEmail.sentAt || 0);
+      const bDate = new Date(b.latestEmail.receivedAt || b.latestEmail.sentAt || 0);
+      return bDate - aDate;
+    });
   });
 
   // Utility functions
@@ -107,16 +190,41 @@ export function useEmailStore() {
 
     try {
       client.value = new JMAPClient({
-        baseUrl: import.meta.env.JMAP_SERVER_URL || "https://mail.tb.pro",
+        baseUrl: "https://hivepost.nl",
         username: credentials.username.trim(),
         password: credentials.password,
       });
+      
+      status.value = "Fetching session…";
       await client.value.fetchSession();
 
+      status.value = "Loading mailboxes…";
       mailboxes.value = await client.value.listMailboxes();
+      
+      status.value = "Loading identities…";
       identities.value = await client.value.listIdentities();
+      
+      // Load address books
+      await refreshAddressBooks();
+      
+      // Load contacts
+      await refreshContacts();
+      
+      // Load drafts
+      await refreshDrafts();
 
+      // Ensure we have a valid inbox ID
+      if (!client.value.ids.inbox && mailboxes.value.length === 0) {
+        throw new Error("No mailboxes found. Cannot connect to inbox.");
+      }
+      
       currentMailboxId.value = client.value.ids.inbox || mailboxes.value[0]?.id;
+      
+      if (!currentMailboxId.value) {
+        throw new Error("Failed to determine inbox mailbox ID.");
+      }
+      
+      status.value = "Connected.";
       connected.value = true;
       document.body.classList.add("connected");
 
@@ -153,11 +261,24 @@ export function useEmailStore() {
       }
     } catch (e) {
       status.value = "Failed.";
-      error.value =
-        e.message +
-        (e.message?.includes("Failed to fetch")
-          ? "\nLikely CORS/network issue."
-          : "");
+      let errorMsg = e.message;
+      
+      if (e.message?.includes("Failed to fetch")) {
+        errorMsg += "\nLikely CORS/network issue.";
+      } else if (e.message?.includes("accountId is required") || e.message?.includes("Cannot query mailboxes")) {
+        errorMsg += "\n\nThis may mean:\n" +
+          "1. No mail account exists for this user yet\n" +
+          "2. The account needs to be created via Stalwart's web admin interface\n" +
+          "3. The accountId format is different than expected\n\n" +
+          "Please check your Stalwart server configuration and ensure a mail account is set up for this user.";
+      } else if (e.message?.includes("trailing characters")) {
+        errorMsg += "\n\nThis JSON parsing error may indicate:\n" +
+          "1. The accountId format is incorrect\n" +
+          "2. A mail account needs to be created first\n" +
+          "3. Check Stalwart server logs for more details";
+      }
+      
+      error.value = errorMsg;
     }
   };
 
@@ -372,6 +493,10 @@ export function useEmailStore() {
     });
     bodyHtml.value = "";
     bodyText.value = "";
+    emailHeaders.value = null;
+    rawMessage.value = null;
+    showHeaders.value = false;
+    showRawMessage.value = false;
 
     try {
       const info = await client.value.emailDetail(m.id);
@@ -381,11 +506,17 @@ export function useEmailStore() {
         ? await resolveCidImages(info.html, info.cidMap || {})
         : "";
       if (!bodyHtml.value && !bodyText.value) bodyText.value = m.preview || "";
+      
+      // Store headers if available
+      if (info.headers) {
+        emailHeaders.value = info.headers;
+      }
     } catch (e) {
       console.debug("Failed to load email detail:", e);
       attachments.splice(0);
       bodyHtml.value = "";
       bodyText.value = m.preview || "";
+      emailHeaders.value = null;
     }
 
     if (!m.isSeen) {
@@ -657,6 +788,51 @@ export function useEmailStore() {
     }
   };
 
+  const moveEmailToFolder = async (targetMailboxId) => {
+    if (!selectedEmailId.value || !targetMailboxId) return;
+
+    try {
+      await client.value.moveEmail(
+        selectedEmailId.value,
+        targetMailboxId,
+        currentMailboxId.value
+      );
+
+      // Optimistically update the Vue Query cache - remove from current mailbox
+      const queryKey = [
+        "emails",
+        currentMailboxId.value,
+        sortPropForBox(currentBox.value),
+      ];
+      queryClient.setQueryData(queryKey, (oldData) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          pages: oldData.pages.map((page) => ({
+            ...page,
+            list: page.list?.filter((email) => email.id !== selectedEmailId.value) || [],
+          })),
+        };
+      });
+
+      // Update mailbox counts
+      const mb = mailboxes.value.find((x) => x.id === currentMailboxId.value);
+      if (mb && typeof mb.totalEmails === "number" && mb.totalEmails > 0) {
+        mb.totalEmails--;
+      }
+
+      // Clear selection and go back to list
+      selectedEmailId.value = null;
+      clearDetail();
+      
+      // Refresh current mailbox to update counts
+      await refreshCurrentMailbox();
+    } catch (e) {
+      console.error('[EmailStore] Failed to move email:', e);
+      error.value = "Failed to move email: " + e.message;
+    }
+  };
+
   // CID image resolution
   const resolveCidImages = async (html, cidMap) => {
     const re = /src=["']cid:([^"']+)["']/gi;
@@ -704,36 +880,57 @@ export function useEmailStore() {
     let quotedHtml = "";
     let quotedText = "";
 
-    // Always try to get the full email body for proper quoting
+    // Always fetch the full email body for proper quoting
     try {
-      // If body is already loaded from viewing the email, use it
+      // Prefer already-loaded content (user has viewed the email)
       if (bodyHtml.value || bodyText.value) {
-        quotedHtml = bodyHtml.value || bodyText.value || m.preview || "";
-        quotedText = bodyText.value || m.preview || "";
+        quotedHtml = bodyHtml.value || "";
+        quotedText = bodyText.value || "";
       } else {
         // Fetch the full email body for quoting
         const info = await client.value.emailDetail(m.id);
-        quotedHtml = info.html || info.text || m.preview || "";
-        quotedText = info.text || m.preview || "";
+        quotedHtml = info.html || "";
+        quotedText = info.text || "";
+      }
+      
+      // Ensure we have content
+      if (!quotedHtml && !quotedText) {
+        quotedHtml = m.preview || "";
+        quotedText = m.preview || "";
       }
     } catch (e) {
-      // If fetching fails, fall back to preview
-      console.debug("Failed to fetch email body for reply, using preview:", e);
-      quotedHtml = m.preview || "";
-      quotedText = m.preview || "";
+      // If fetching fails, try using already loaded content
+      console.debug("Failed to fetch email body for reply:", e);
+      quotedHtml = bodyHtml.value || bodyText.value || m.preview || "";
+      quotedText = bodyText.value || m.preview || "";
     }
 
-    const who = m.fromText || "the sender";
+    const who = m.fromText || m.from?.[0]?.name || m.from?.[0]?.email || "the sender";
     const when = fmtDate(m.receivedAt || m.sentAt);
+    
+    // Convert HTML to plain text if we only have HTML
+    let plainTextBody = quotedText;
+    if (!plainTextBody && quotedHtml) {
+      // Strip HTML tags to get plain text
+      const tmp = document.createElement('div');
+      tmp.innerHTML = quotedHtml;
+      plainTextBody = tmp.textContent || tmp.innerText || '';
+    }
+    if (!plainTextBody) {
+      plainTextBody = m.preview || '';
+    }
+    
+    // Format reply text with > prefix (standard email quote format) - like React code
+    // Split by newlines and add > prefix to each line
+    const quotedLines = plainTextBody.split('\n');
+    const quotedTextWithPrefix = quotedLines.map(line => `> ${line}`).join('\n');
+    const replyText = `\n\nOn ${when}, ${who} wrote:\n${quotedTextWithPrefix}`;
+    
+    // For HTML, convert the plain text format to HTML with proper line breaks
+    const quotedHtmlFormatted = quotedTextWithPrefix.replace(/\n/g, '<br>');
+    const replyHtml = `<p><br></p><p><br></p><p>On ${when}, ${who} wrote:</p>${quotedHtmlFormatted}`;
 
-    // Create reply with properly formatted quoted content
-    const replyHtml = `<br><br><div style="color: #666;">On ${when}, ${who} wrote:</div><blockquote style="margin: 10px 0 0 10px; padding: 0 0 0 10px; border-left: 2px solid #ccc; color: #666;">${quotedHtml}</blockquote>`;
-    const replyText = `\n\nOn ${when}, ${who} wrote:\n> ${quotedText.replace(
-      /\n/g,
-      "\n> "
-    )}`;
-
-    toggleCompose(true);
+    // Set compose fields BEFORE opening the panel
     compose.to = joinAddrs(
       m.replyTo && m.replyTo.length ? m.replyTo : m.from || []
     );
@@ -742,9 +939,12 @@ export function useEmailStore() {
     compose.text = replyText;
     composeStatus.value = "";
     composeDebug.value = "";
+    
+    // Open compose panel after content is set
+    toggleCompose(true);
   };
 
-  const toggleCompose = (forceOpen) => {
+  const toggleCompose = async (forceOpen) => {
     composeOpen.value = forceOpen === true ? true : !composeOpen.value;
     composeStatus.value = "";
     composeDebug.value = "";
@@ -754,6 +954,15 @@ export function useEmailStore() {
       compose.subject = "";
       compose.html = "";
       compose.text = "";
+      
+      // Ensure contacts are loaded for autocomplete
+      if (contacts.value.length === 0 && client.value) {
+        try {
+          await refreshContacts();
+        } catch (e) {
+          console.debug("Failed to refresh contacts on compose open:", e);
+        }
+      }
     }
   };
 
@@ -765,6 +974,7 @@ export function useEmailStore() {
     compose.subject = "";
     compose.html = "";
     compose.text = "";
+    currentDraftId.value = null;
   };
 
   const parseAddrList = (input) =>
@@ -848,13 +1058,39 @@ export function useEmailStore() {
       composeStatus.value = "Sending…";
       composeDebug.value = "";
 
+      const signatureValue = signatureText.value.trim();
+      let textBody = compose.text || "";
+      let htmlBody = compose.html || "";
+
+      if (signatureEnabled.value && signatureValue) {
+        const signatureBlock = `\n\n-- \n${signatureValue}`;
+        if (!textBody.includes(signatureValue)) {
+          textBody = (textBody || "") + signatureBlock;
+        }
+
+        const escapeHtml = (str) =>
+          str
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+        const signatureHtml =
+          "<p><br></p><p>--<br>" +
+          escapeHtml(signatureValue).replace(/\n/g, "<br>") +
+          "</p>";
+        if (!htmlBody.includes(signatureValue)) {
+          htmlBody = (htmlBody || "") + signatureHtml;
+        }
+      }
+
       const res = await client.value.sendMultipartAlternative({
         from,
         identityId: id.id,
         toList,
         subject: compose.subject || "",
-        text: compose.text || "",
-        html: compose.html || "",
+        text: textBody || "",
+        html: htmlBody || "",
         draftsId: client.value.ids.drafts,
         sentId: client.value.ids.sent,
       });
@@ -881,6 +1117,28 @@ export function useEmailStore() {
         composeStatus.value = "Send may have failed: " + firstLine;
         return;
       }
+      
+      // Extract the sent email ID from the response and mark it as read
+      try {
+        if (res.json?.methodResponses) {
+          // Find Email/set response to get the created email ID
+          const emailSetResponse = res.json.methodResponses.find(
+            (r) => r[0] === "Email/set"
+          );
+          if (emailSetResponse && emailSetResponse[1]?.created) {
+            const createdEmail = Object.values(emailSetResponse[1].created)[0];
+            if (createdEmail?.id && client.value.ids.sent) {
+              // Mark the sent email as read
+              await client.value.setSeen(createdEmail.id, true);
+              console.debug('[EmailStore] Marked sent email as read:', createdEmail.id);
+            }
+          }
+        }
+      } catch (e) {
+        // Don't fail the send if marking as read fails
+        console.warn('[EmailStore] Failed to mark sent email as read:', e.message);
+      }
+      
       composeStatus.value = "Sent.";
       discard();
       if (currentMailboxId.value === client.value.ids.sent)
@@ -892,14 +1150,192 @@ export function useEmailStore() {
     }
   };
 
+  const updateIdentity = async (identityId, updates) => {
+    if (!client.value) throw new Error("Not connected");
+    const result = await client.value.updateIdentity(identityId, updates);
+    identities.value = await client.value.listIdentities();
+    return result;
+  };
+
   const download = (a) => {
     client.value
       .downloadAttachment(a.blobId, a.name, a.type)
       .catch((e) => (error.value = "Download failed: " + e.message));
   };
 
-  const setView = (mode) => {
+  const setViewMode = (mode) => {
     if (["all", "unread"].includes(mode)) viewMode.value = mode;
+  };
+
+  // Contact editor functions
+  const openContactEditor = async (contact = null) => {
+    console.debug('[EmailStore] Opening contact editor', contact ? 'for contact' : 'for new contact', contact);
+    editingContact.value = contact;
+    contactEditorOpen.value = true;
+    contactStatus.value = "";
+    
+    // If opening for new contact and address books haven't loaded, try loading them
+    if (!contact && addressBooks.value.length === 0) {
+      await refreshAddressBooks();
+    }
+  };
+
+  const closeContactEditor = () => {
+    contactEditorOpen.value = false;
+    editingContact.value = null;
+    contactStatus.value = "";
+  };
+
+  const refreshAddressBooks = async () => {
+    if (!client.value) return;
+    try {
+      addressBooks.value = await client.value.listAddressBooks();
+      console.log('[EmailStore] Refreshed address books:', addressBooks.value.length, addressBooks.value);
+      
+      // Load selected address book from localStorage
+      const savedAddressBookId = localStorage.getItem('thundermail_selected_address_book_id');
+      if (savedAddressBookId && addressBooks.value.find(ab => ab.id === savedAddressBookId)) {
+        selectedAddressBookId.value = savedAddressBookId;
+      } else if (addressBooks.value.length > 0) {
+        // Prefer Stalwart Address Book, then default, then first
+        const stalwartBook = addressBooks.value.find(ab => 
+          ab.name && ab.name.toLowerCase().includes('stalwart')
+        );
+        if (stalwartBook) {
+          selectedAddressBookId.value = stalwartBook.id;
+        } else {
+          const defaultBook = addressBooks.value.find(ab => ab.isDefault === true);
+          selectedAddressBookId.value = defaultBook?.id || addressBooks.value[0].id;
+        }
+        // Save selection
+        localStorage.setItem('thundermail_selected_address_book_id', selectedAddressBookId.value);
+      }
+    } catch (e) {
+      console.error('[EmailStore] Failed to refresh address books:', e);
+      // Keep addressBooks as empty array so UI shows loading state
+      addressBooks.value = [];
+    }
+  };
+
+  const setSelectedAddressBook = (addressBookId) => {
+    selectedAddressBookId.value = addressBookId;
+    localStorage.setItem('thundermail_selected_address_book_id', addressBookId);
+    console.debug('[EmailStore] Selected address book:', addressBookId);
+  };
+
+  const refreshContacts = async () => {
+    if (!client.value) return;
+    try {
+      contacts.value = await client.value.listContacts();
+      console.debug('[EmailStore] Refreshed contacts:', contacts.value.length);
+    } catch (e) {
+      console.warn('[EmailStore] Failed to refresh contacts:', e.message);
+    }
+  };
+
+  const refreshDrafts = async () => {
+    if (!client.value || !client.value.ids.drafts) return;
+    try {
+      loadingDrafts.value = true;
+      drafts.value = await client.value.listDrafts({ limit: 50 });
+      console.debug('[EmailStore] Refreshed drafts:', drafts.value.length);
+    } catch (e) {
+      console.error('[EmailStore] Failed to load drafts:', e);
+      drafts.value = [];
+    } finally {
+      loadingDrafts.value = false;
+    }
+  };
+
+  const loadDraft = async (draftId) => {
+    if (!client.value) return;
+    try {
+      const draft = await client.value.loadDraft(draftId);
+      
+      // Find the identity index that matches the draft's from address
+      const fromEmail = draft.from?.email;
+      let fromIdx = 0;
+      if (fromEmail) {
+        const idx = identities.value.findIndex(id => id.email === fromEmail);
+        if (idx >= 0) fromIdx = idx;
+      }
+      
+      // Parse addresses
+      const to = draft.to.map(addr => addr.name ? `${addr.name} <${addr.email}>` : addr.email).join(', ');
+      const cc = draft.cc.map(addr => addr.name ? `${addr.name} <${addr.email}>` : addr.email).join(', ');
+      const bcc = draft.bcc.map(addr => addr.name ? `${addr.name} <${addr.email}>` : addr.email).join(', ');
+      
+      // Set compose fields
+      compose.fromIdx = fromIdx;
+      compose.to = to;
+      compose.subject = draft.subject || '';
+      compose.html = draft.html || '';
+      compose.text = draft.text || '';
+      currentDraftId.value = draftId;
+      
+      // Open compose panel
+      toggleCompose(true);
+    } catch (e) {
+      console.error('[EmailStore] Failed to load draft:', e);
+      composeStatus.value = "Failed to load draft: " + e.message;
+    }
+  };
+
+  const saveContact = async (contactData) => {
+    if (!client.value) return;
+    
+    savingContact.value = true;
+    contactStatus.value = "Saving...";
+    
+    try {
+      if (editingContact.value) {
+        // Update existing contact
+        await client.value.updateContact(editingContact.value.id, contactData);
+        contactStatus.value = "Contact updated.";
+      } else {
+        // Create new contact with selected address book
+        await client.value.createContact(contactData, selectedAddressBookId.value);
+        contactStatus.value = "Contact created.";
+      }
+      
+      // Refresh contacts list
+      await refreshContacts();
+      
+      // Close editor after a short delay
+      setTimeout(() => {
+        closeContactEditor();
+      }, 1000);
+    } catch (e) {
+      contactStatus.value = "Failed: " + e.message;
+      console.error('[EmailStore] Failed to save contact:', e);
+    } finally {
+      savingContact.value = false;
+    }
+  };
+
+  const deleteContact = async (contactId) => {
+    if (!client.value) return;
+    
+    savingContact.value = true;
+    contactStatus.value = "Deleting...";
+    
+    try {
+      await client.value.deleteContact(contactId);
+      contactStatus.value = "Contact deleted.";
+      
+      // Refresh contacts list
+      await refreshContacts();
+      
+      // Close editor after a short delay
+      setTimeout(() => {
+        closeContactEditor();
+      }, 1000);
+    } catch (e) {
+      contactStatus.value = "Failed: " + e.message;
+      console.error('[EmailStore] Failed to delete contact:', e);
+    } finally {
+      savingContact.value = false;
+    }
   };
 
   // Set up automatic delta updates
@@ -924,6 +1360,49 @@ export function useEmailStore() {
       clearInterval(deltaUpdateInterval);
       deltaUpdateInterval = null;
     }
+  };
+
+  const logout = () => {
+    stopDeltaUpdates();
+    try {
+      client.value?.cancelAll?.();
+    } catch {}
+
+    connected.value = false;
+    status.value = "Not connected.";
+    error.value = "";
+    client.value = null;
+
+    mailboxes.value = [];
+    identities.value = [];
+    contacts.value = [];
+    addressBooks.value = [];
+    drafts.value = [];
+    loadingDrafts.value = false;
+    currentDraftId.value = null;
+
+    currentMailboxId.value = null;
+    selectedEmailId.value = null;
+    selectedContactId.value = null;
+    currentView.value = "mail";
+    viewMode.value = "list";
+    filterText.value = "";
+
+    composeOpen.value = false;
+    composeStatus.value = "";
+    composeDebug.value = "";
+
+    detail.value = null;
+    attachments.value = [];
+    bodyHtml.value = "";
+    bodyText.value = "";
+    emailHeaders.value = null;
+    rawMessage.value = null;
+    showHeaders.value = false;
+    showRawMessage.value = false;
+
+    document.body.classList.remove("connected");
+    localStorage.removeItem("jmap.username");
   };
 
   // Handle window focus for delta updates
@@ -953,11 +1432,13 @@ export function useEmailStore() {
 
   return {
     // State
+    client,
     connected,
     status,
     error,
     mailboxes,
     identities,
+    contacts,
     currentMailboxId,
     selectedEmailId,
     composeOpen,
@@ -965,9 +1446,25 @@ export function useEmailStore() {
     sending,
     composeStatus,
     composeDebug,
+    signatureText,
+    signatureEnabled,
+    drafts,
+    loadingDrafts,
+    currentDraftId,
+    refreshDrafts,
+    loadDraft,
+    contactEditorOpen,
+    editingContact,
+    savingContact,
+    contactStatus,
+    addressBooks,
+    selectedAddressBookId,
+    currentView,
+    selectedContactId,
     viewMode,
     filterText,
     visibleMessages,
+    groupedThreads,
     totalEmailsCount,
     detail,
     attachments,
@@ -978,15 +1475,81 @@ export function useEmailStore() {
     connect,
     switchMailbox,
     refreshCurrentMailbox,
-    setView,
+    refreshContacts,
+    refreshAddressBooks,
+    setSelectedAddressBook,
+    openContactEditor,
+    closeContactEditor,
+    saveContact,
+    deleteContact,
+    selectContact: (contact) => {
+      selectedContactId.value = contact?.id || null;
+      if (contact) {
+        openContactEditor(contact);
+      }
+    },
+    switchView: (view) => {
+      if (view === "mail" || view === "contacts") {
+        currentView.value = view;
+        if (view === "mail") {
+          selectedContactId.value = null;
+        }
+      }
+    },
+    setViewMode,
     selectMessage,
     backToList,
     replyToCurrent,
     deleteCurrent,
+    moveEmailToFolder,
     toggleCompose,
     discard,
     send,
+    updateIdentity,
     download,
     onVirtRange,
+    logout,
+    setSignatureText: (value) => {
+      signatureText.value = value;
+      localStorage.setItem("jmap.signature", value || "");
+    },
+    setSignatureEnabled: (value) => {
+      signatureEnabled.value = !!value;
+      localStorage.setItem("jmap.signatureEnabled", String(!!value));
+    },
+    
+    // Headers and raw message
+    emailHeaders,
+    rawMessage,
+    showHeaders,
+    showRawMessage,
+    async loadHeaders() {
+      if (!selectedEmailId.value || !client.value) return;
+      if (emailHeaders.value) {
+        showHeaders.value = !showHeaders.value;
+        return;
+      }
+      try {
+        emailHeaders.value = await client.value.getEmailHeaders(selectedEmailId.value);
+        showHeaders.value = true;
+      } catch (e) {
+        console.error('[EmailStore] Failed to load headers:', e);
+        error.value = "Failed to load headers: " + e.message;
+      }
+    },
+    async loadRawMessage() {
+      if (!selectedEmailId.value || !client.value) return;
+      if (rawMessage.value) {
+        showRawMessage.value = !showRawMessage.value;
+        return;
+      }
+      try {
+        rawMessage.value = await client.value.getRawMessage(selectedEmailId.value);
+        showRawMessage.value = true;
+      } catch (e) {
+        console.error('[EmailStore] Failed to load raw message:', e);
+        error.value = "Failed to load raw message: " + e.message;
+      }
+    },
   };
 }

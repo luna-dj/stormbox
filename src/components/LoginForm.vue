@@ -1,5 +1,9 @@
 <script>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+
+const STORAGE_KEY_USERNAME = 'thundermail_remember_username'
+const STORAGE_KEY_PASSWORD = 'thundermail_remember_password'
+const STORAGE_KEY_REMEMBER = 'thundermail_remember_me'
 
 export default {
   name: 'LoginForm',
@@ -12,15 +16,57 @@ export default {
   setup(props, { emit }) {
     const username = ref('')
     const password = ref('')
+    const rememberMe = ref(false)
+
+    // Load saved credentials on mount
+    onMounted(() => {
+      const savedRemember = localStorage.getItem(STORAGE_KEY_REMEMBER) === 'true'
+      rememberMe.value = savedRemember
+      
+      if (savedRemember) {
+        const savedUsername = localStorage.getItem(STORAGE_KEY_USERNAME)
+        const savedPassword = localStorage.getItem(STORAGE_KEY_PASSWORD)
+        
+        if (savedUsername) {
+          username.value = savedUsername
+        }
+        if (savedPassword) {
+          password.value = savedPassword
+        }
+      }
+    })
 
     const connect = () => {
+      if (!username.value.trim() || !password.value) {
+        return
+      }
+      
+      // Save or clear credentials based on remember me checkbox
+      if (rememberMe.value) {
+        localStorage.setItem(STORAGE_KEY_USERNAME, username.value.trim())
+        localStorage.setItem(STORAGE_KEY_PASSWORD, password.value)
+        localStorage.setItem(STORAGE_KEY_REMEMBER, 'true')
+      } else {
+        localStorage.removeItem(STORAGE_KEY_USERNAME)
+        localStorage.removeItem(STORAGE_KEY_PASSWORD)
+        localStorage.removeItem(STORAGE_KEY_REMEMBER)
+      }
+      
       emit('connect', { username: username.value, password: password.value })
+    }
+
+    const handleKeydown = (e) => {
+      if (e.key === 'Enter') {
+        connect()
+      }
     }
 
     return {
       username,
       password,
-      connect
+      rememberMe,
+      connect,
+      handleKeydown
     }
   }
 }
@@ -33,9 +79,13 @@ export default {
       <h1>Thundermail</h1>
       <div class="sub">Sign in with your username and app password.</div>
       <div class="row">
-        <input v-model.trim="username" placeholder="Username" autocomplete="username" />
-        <input v-model="password" placeholder="App password" type="password" autocomplete="current-password" />
-        <button @click="connect">Connect</button>
+        <input v-model.trim="username" placeholder="Username" autocomplete="username" @keydown="handleKeydown" />
+        <input v-model="password" placeholder="App password" type="password" autocomplete="current-password" @keydown="handleKeydown" />
+        <label class="remember-me">
+          <input type="checkbox" v-model="rememberMe" />
+          <span>Remember me</span>
+        </label>
+        <button @click="connect" :disabled="!username.trim() || !password">Connect</button>
       </div>
       <div id="authMeta" class="meta">{{ status }}</div>
       <div id="authErr" class="err" v-if="error">{{ error }}</div>
@@ -97,6 +147,26 @@ input {
   color: var(--text);
 }
 
+.remember-me {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.remember-me input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  cursor: pointer;
+}
+
+.remember-me span {
+  color: var(--muted);
+}
+
 button {
   padding: .7rem .95rem;
   border: 0;
@@ -105,6 +175,11 @@ button {
   color: #fff;
   cursor: pointer;
   width: 100%;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .meta {

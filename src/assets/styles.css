@@ -95,6 +95,33 @@ header {
   background: var(--panel);
 }
 
+header .header-nav {
+  display: flex;
+  gap: 4px;
+  margin-right: 16px;
+}
+
+.nav-btn {
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.nav-btn:hover {
+  background: var(--panel2);
+}
+
+.nav-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
 header strong {
   font-weight: 700;
 }
@@ -113,6 +140,26 @@ main {
   transition: grid-template-columns 0.15s ease;
 }
 
+/* Contacts view: 2-column layout (contacts list + editor) */
+main.contacts-view {
+  grid-template-columns: 400px 1fr;
+}
+
+main.contacts-view.hide-detail {
+  grid-template-columns: 400px 0;
+}
+
+main.calendar-view-main {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  grid-template-columns: none !important;
+}
+
+main.calendar-view-main .detail {
+  display: none !important;
+}
+
 main.hide-detail {
   grid-template-columns: 280px 1fr 0;
 }
@@ -125,6 +172,30 @@ main.hide-detail .detail {
 .detail {
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Header buttons */
+.header-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.header-btn:hover {
+  background: var(--panel2);
+}
+
+.header-btn svg {
+  flex-shrink: 0;
 }
 
 /* Theme toggle button */

@@ -1,19 +1,110 @@
 <script>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, nextTick, computed } from 'vue'
+import EmailAutocomplete from './EmailAutocomplete.vue'
 
 export default {
   name: 'ComposePanel',
+  components: {
+    EmailAutocomplete
+  },
   props: {
     composeOpen: Boolean,
     compose: Object,
     identities: Array,
+    contacts: Array,
     sending: Boolean,
     composeStatus: String,
-    composeDebug: String
+    composeDebug: String,
+    signatureText: String,
+    signatureEnabled: Boolean
   },
-  emits: ['send', 'discard', 'update:compose'],
+  emits: ['send', 'discard', 'update:compose', 'update:signature', 'update:signatureEnabled', 'update:identity'],
   setup(props, { emit }) {
+    const showAutocomplete = ref(false)
+    const toInputRef = ref(null)
+    
+    const currentQuery = computed(() => {
+      if (!props.compose.to) return ''
+      const lastComma = props.compose.to.lastIndexOf(',')
+      return lastComma >= 0 
+        ? props.compose.to.substring(lastComma + 1).trim() 
+        : props.compose.to.trim()
+    })
+    
+    const shouldShowAutocomplete = computed(() => {
+      return showAutocomplete.value && currentQuery.value.length > 0
+    })
+    
+    const selectEmail = (email) => {
+      const to = props.compose.to || ''
+      const lastComma = to.lastIndexOf(',')
+      const before = lastComma >= 0 ? to.substring(0, lastComma + 1) + ' ' : ''
+      const newTo = before + email
+      emit('update:compose', {
+        ...props.compose,
+        to: newTo
+      })
+      showAutocomplete.value = false
+    }
     let quill = null
+    const identityEditorOpen = ref(false)
+    const identityName = ref('')
+    const identityEmail = ref('')
+    const identityId = ref(null)
+
+    const escapeHtml = (str) => {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+    }
+
+    const insertSignature = () => {
+      const signatureValue = (props.signatureText || '').trim()
+      if (!signatureValue) return
+      const signatureHtml = `<p><br></p><p>--<br>${escapeHtml(signatureValue).replace(/\n/g, '<br>')}</p>`
+
+      if (quill) {
+        const insertAt = Math.max(0, quill.getLength() - 1)
+        quill.setSelection(insertAt, 0)
+        quill.clipboard.dangerouslyPasteHTML(insertAt, signatureHtml)
+        return
+      }
+
+      emit('update:compose', {
+        ...props.compose,
+        html: (props.compose.html || '') + signatureHtml,
+        text: (props.compose.text || '') + `\n\n-- \n${signatureValue}`
+      })
+    }
+
+    const openIdentityEditor = () => {
+      const identity = props.identities?.[props.compose.fromIdx] || props.identities?.[0]
+      if (!identity) return
+      identityId.value = identity.id
+      identityName.value = identity.name || ''
+      identityEmail.value = identity.email || ''
+      identityEditorOpen.value = true
+    }
+
+    const closeIdentityEditor = () => {
+      identityEditorOpen.value = false
+      identityId.value = null
+      identityName.value = ''
+      identityEmail.value = ''
+    }
+
+    const saveIdentity = () => {
+      if (!identityId.value) return
+      emit('update:identity', {
+        id: identityId.value,
+        name: identityName.value.trim(),
+        email: identityEmail.value.trim()
+      })
+      closeIdentityEditor()
+    }
 
     const ensureEditor = () => {
       if (!quill) {
@@ -44,6 +135,27 @@ export default {
               })
             }
           })
+          
+          // Set initial content if it exists (for replies)
+          if (props.compose.html && props.composeOpen) {
+            setTimeout(() => {
+              if (quill && props.compose.html) {
+                quill.root.innerHTML = props.compose.html
+                quill.setSelection(0)
+              }
+            }, 50)
+          }
+          
+          // Set initial content if it exists (for replies)
+          if (props.compose.html && props.composeOpen && props.compose.html.trim() && props.compose.html !== '<p><br></p>') {
+            setTimeout(() => {
+              if (quill && props.compose.html) {
+                console.debug('[ComposePanel] Setting initial content in Quill:', props.compose.html.substring(0, 200))
+                quill.root.innerHTML = props.compose.html
+                quill.setSelection(0)
+              }
+            }, 100)
+          }
         })
       }
     }
@@ -54,25 +166,65 @@ export default {
       }
     })
 
-    watch(() => props.composeOpen, (newValue) => {
+    watch(() => props.composeOpen, async (newValue) => {
       if (newValue) {
         ensureEditor()
-        setTimeout(() => {
+        // Wait for Quill to be initialized, then set content
+        await nextTick()
+        const setContent = () => {
           if (quill) {
             // Set initial content if provided
-            if (props.compose.html) {
-              quill.root.innerHTML = props.compose.html
-            } else if (props.compose.text) {
-              quill.setText(props.compose.text)
+            const html = props.compose.html
+            const text = props.compose.text
+            if (html && html.trim() && html !== '<p><br></p>' && html !== '<p></p>') {
+              // Use Quill's clipboard to properly parse HTML
+              const delta = quill.clipboard.convert(html)
+              quill.setContents(delta)
+              quill.setSelection(0)
+            } else if (text && text.trim()) {
+              quill.setText(text)
+              quill.setSelection(0)
             }
             quill.focus()
+          } else {
+            // Quill not ready yet, try again
+            setTimeout(setContent, 50)
           }
-        }, 100)
+        }
+        setTimeout(setContent, 200)
+      }
+    })
+    
+    // Watch for compose.html changes to update editor (for replies set after panel opens)
+    watch(() => props.compose.html, (newHtml) => {
+      if (quill && props.composeOpen && newHtml && newHtml.trim() && newHtml !== '<p><br></p>' && newHtml !== '<p></p>') {
+        const currentHtml = quill.root.innerHTML.trim()
+        // Only update if editor is empty or has minimal content
+        if (!currentHtml || currentHtml === '<p><br></p>' || currentHtml === '<p></p>') {
+          setTimeout(() => {
+            if (quill) {
+              quill.root.innerHTML = newHtml
+              quill.setSelection(0)
+            }
+          }, 100)
+        }
       }
     })
 
     return {
-      quill
+      quill,
+      showAutocomplete,
+      toInputRef,
+      currentQuery,
+      shouldShowAutocomplete,
+      selectEmail,
+      insertSignature,
+      identityEditorOpen,
+      identityName,
+      identityEmail,
+      openIdentityEditor,
+      closeIdentityEditor,
+      saveIdentity
     }
   }
 }
@@ -108,20 +260,64 @@ export default {
 
     <div class="row">
       <label>From</label>
-      <select id="c-from" v-model="compose.fromIdx">
-        <option v-for="(id, idx) in identities" :key="id.id" :value="idx">
-          {{ (id.name ? (id.name + ' ') : '') + '<' + id.email + '>' }} </option>
-      </select>
+      <div class="from-row">
+        <select id="c-from" v-model="compose.fromIdx">
+          <option v-for="(id, idx) in identities" :key="id.id" :value="idx">
+            {{ (id.name ? (id.name + ' ') : '') + '<' + id.email + '>' }} </option>
+        </select>
+        <button type="button" class="btn-ghost" :disabled="!identities.length" @click="openIdentityEditor">
+          Edit
+        </button>
+      </div>
     </div>
 
-    <div class="row">
+    <div class="row" style="position: relative;">
       <label>To</label>
-      <input id="c-to" v-model="compose.to" placeholder="alice@example.com, Bob &lt;bob@example.com&gt;">
+      <input 
+        id="c-to" 
+        ref="toInputRef"
+        v-model="compose.to" 
+        placeholder="alice@example.com, Bob &lt;bob@example.com&gt;"
+        autocomplete="off"
+        @focus="showAutocomplete = true"
+        @blur="setTimeout(() => showAutocomplete = false, 200)"
+        @input="$emit('update:compose', { ...compose, to: $event.target.value })"
+      >
+      <EmailAutocomplete
+        :query="currentQuery"
+        :contacts="contacts"
+        :show="shouldShowAutocomplete"
+        @select="selectEmail"
+      />
     </div>
 
     <div class="row">
       <label>Subject</label>
       <input id="c-subj" v-model="compose.subject" placeholder="Subject">
+    </div>
+
+    <div class="row">
+      <label>Signature</label>
+      <div class="signature-field">
+        <textarea
+          id="c-signature"
+          :value="signatureText"
+          rows="3"
+          placeholder="Add a signature"
+          @input="$emit('update:signature', $event.target.value)"
+        ></textarea>
+        <label class="signature-toggle">
+          <input
+            type="checkbox"
+            :checked="signatureEnabled"
+            @change="$emit('update:signatureEnabled', $event.target.checked)"
+          />
+          Use signature when sending
+        </label>
+        <button type="button" class="btn-ghost" @click="insertSignature">
+          Insert signature into body
+        </button>
+      </div>
     </div>
 
     <div class="row">
@@ -133,6 +329,25 @@ export default {
     <pre id="c-debug" class="debug" style="display:block; white-space:pre-wrap;" v-if="composeDebug">
       {{ composeDebug }}
     </pre>
+  </div>
+
+  <div v-if="identityEditorOpen" class="identity-editor-overlay" @click.self="closeIdentityEditor">
+    <div class="identity-editor">
+      <div class="identity-editor-header">
+        <h3>Edit Identity</h3>
+        <button class="close-btn" @click="closeIdentityEditor">×</button>
+      </div>
+      <div class="identity-editor-body">
+        <label>Name</label>
+        <input v-model="identityName" type="text" placeholder="Display name">
+        <label>Email</label>
+        <input v-model="identityEmail" type="email" placeholder="address@example.com">
+      </div>
+      <div class="identity-editor-actions">
+        <button class="btn-ghost" @click="closeIdentityEditor">Cancel</button>
+        <button class="btn-primary" @click="saveIdentity">Save</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -158,6 +373,12 @@ export default {
 .compose .row input,
 .compose .row select {
   width: 100%;
+}
+
+.from-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
 }
 
 .compose .actions {
@@ -204,6 +425,91 @@ export default {
   border-radius: .5rem;
   background: var(--panel2);
   color: var(--text);
+}
+
+#c-signature {
+  width: 100%;
+  padding: .5rem .65rem;
+  border: 1px solid var(--border);
+  border-radius: .5rem;
+  background: var(--panel2);
+  color: var(--text);
+  resize: vertical;
+}
+
+.signature-field {
+  display: grid;
+  gap: 8px;
+}
+
+.signature-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.identity-editor-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.identity-editor {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  width: 90%;
+  max-width: 420px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+.identity-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.identity-editor-header h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.identity-editor-header .close-btn {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.identity-editor-body {
+  display: grid;
+  gap: 8px;
+  padding: 12px 16px;
+}
+
+.identity-editor-body input {
+  padding: .5rem .65rem;
+  border: 1px solid var(--border);
+  border-radius: .5rem;
+  background: var(--panel2);
+  color: var(--text);
+}
+
+.identity-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
 }
 
 /* Compose debug output scroll */

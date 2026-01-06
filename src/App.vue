@@ -1,12 +1,18 @@
 <script>
-import { computed } from 'vue'
+import { computed, provide } from 'vue'
 import { useEmailStore } from './composables/useEmailStore.js'
+import { useCalendarStore } from './composables/useCalendarStore.js'
 import { useTheme } from './composables/useTheme.js'
 import LoginForm from './components/LoginForm.vue'
 import FolderList from './components/FolderList.vue'
 import MessageList from './components/MessageList.vue'
 import ComposePanel from './components/ComposePanel.vue'
 import MessageDetail from './components/MessageDetail.vue'
+import ContactEditor from './components/ContactEditor.vue'
+import ContactManager from './components/ContactManager.vue'
+import DraftsList from './components/DraftsList.vue'
+import CalendarView from './components/CalendarView.vue'
+import EventEditor from './components/EventEditor.vue'
 
 export default {
   name: 'App',
@@ -15,14 +21,20 @@ export default {
     FolderList,
     MessageList,
     ComposePanel,
-    MessageDetail
+    MessageDetail,
+    ContactEditor,
+    ContactManager,
+    DraftsList,
+    CalendarView,
+    EventEditor
   },
   setup() {
     const emailStore = useEmailStore()
+    const calendarStore = useCalendarStore(emailStore)
     const { theme, cycle } = useTheme()
 
     const serverName = computed(() => {
-      const url = import.meta.env.JMAP_SERVER_URL || "https://mail.tb.pro"
+      const url = "https://hivepost.nl"
       try {
         return new URL(url).hostname
       } catch {
@@ -30,8 +42,37 @@ export default {
       }
     })
 
+    // Override switchView to handle calendar
+    const switchView = (view) => {
+      if (view === 'calendar') {
+        calendarStore.calendarViewMode.value = 'month' // Reset calendar view to month
+        emailStore.currentView.value = 'calendar'
+        // Refresh calendars when switching to calendar view
+        calendarStore.refreshCalendars()
+      } else {
+        emailStore.switchView(view)
+      }
+    }
+
+    // Provide stores to child components
+    provide('emailStore', emailStore)
+    provide('calendarStore', calendarStore)
+
+    // Event editor handlers
+    const saveEvent = async () => {
+      await calendarStore.refreshEvents()
+    }
+
+    const deleteEvent = async () => {
+      await calendarStore.refreshEvents()
+    }
+
     return {
       ...emailStore,
+      ...calendarStore,
+      switchView,
+      saveEvent,
+      deleteEvent,
       currentTheme: theme,
       cycle,
       serverName,
@@ -48,8 +89,37 @@ export default {
 
     <!-- Header -->
     <header v-if="connected">
-      <strong>Mail — {{ serverName }}</strong>
+      <div class="header-nav">
+        <button
+          class="nav-btn"
+          :class="{ active: currentView === 'mail' }"
+          @click="switchView('mail')"
+        >
+          Mail
+        </button>
+        <button
+          class="nav-btn"
+          :class="{ active: currentView === 'contacts' }"
+          @click="switchView('contacts')"
+        >
+          Contacts
+        </button>
+        <button
+          class="nav-btn"
+          :class="{ active: currentView === 'calendar' }"
+          @click="switchView('calendar')"
+        >
+          Calendar
+        </button>
+      </div>
+      <strong>{{ currentView === 'mail' ? 'Mail' : currentView === 'contacts' ? 'Contacts' : 'Calendar' }} — {{ serverName }}</strong>
       <span class="spacer"></span>
+      <button class="header-btn" @click="openContactEditor()" title="New Contact" aria-label="New Contact">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M20 0H4a4 4 0 00-4 4v16a4 4 0 004 4h16a4 4 0 004-4V4a4 4 0 00-4-4zm-2 12h-6v6h-4v-6H4v-4h4V2h4v6h6v4z"/>
+        </svg>
+        <span>New Contact</span>
+      </button>
       <button class="theme-toggle" @click="cycle" :title="themeTitle" aria-label="Theme: system/light/dark">
         <!-- System icon (computer) -->
         <svg v-if="currentTheme === 'system'" width="16" height="16" viewBox="0 0 24 24" fill="currentColor"
@@ -67,32 +137,117 @@ export default {
           <path d="M21.64 13a9 9 0 11-10.63-10.6A9 9 0 0021.64 13z" />
         </svg>
       </button>
+      <button class="header-btn" @click="logout" title="Logout" aria-label="Logout">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M16 13v-2H7V8l-5 4 5 4v-3h9zm5-9H9a2 2 0 00-2 2v3h2V6h12v12H9v-3H7v3a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2z"/>
+        </svg>
+        <span>Logout</span>
+      </button>
       <div id="err" class="err" v-if="error">{{ error }}</div>
     </header>
 
     <!-- Main Content -->
-    <main id="main" :class="(!selectedEmailId && !composeOpen) ? 'hide-detail' : ''" v-if="connected">
-      <!-- Folder List -->
-      <FolderList :mailboxes="mailboxes" :current-mailbox-id="currentMailboxId" @compose="toggleCompose"
-        @reload="refreshCurrentMailbox" @switch-mailbox="switchMailbox" />
+    <main id="main" :class="[
+      currentView === 'contacts' ? 'contacts-view' : '',
+      currentView === 'calendar' ? 'calendar-view-main' : '',
+      (!selectedEmailId && !composeOpen && !contactEditorOpen && currentView !== 'calendar') ? 'hide-detail' : ''
+    ]" v-if="connected">
+      <!-- Mail View -->
+      <template v-if="currentView === 'mail'">
+        <!-- Folder List -->
+        <div style="display: flex; flex-direction: column; border-right: 1px solid var(--border);">
+          <FolderList :mailboxes="mailboxes" :current-mailbox-id="currentMailboxId" @compose="toggleCompose"
+            @reload="refreshCurrentMailbox" @switch-mailbox="switchMailbox" />
+          <DraftsList 
+            :drafts="drafts" 
+            :loading="loadingDrafts"
+            @resume-draft="loadDraft"
+            @refresh="refreshDrafts"
+          />
+        </div>
 
-      <!-- Message List -->
-      <MessageList :current-mailbox-id="currentMailboxId" :selected-email-id="selectedEmailId" :view-mode="viewMode"
-        :visible-messages="visibleMessages" :total-count="totalEmailsCount" @set-view="setView"
-        @select-message="selectMessage" @virt-range="onVirtRange" @update:filter-text="filterText = $event" />
+        <!-- Message List -->
+        <MessageList :current-mailbox-id="currentMailboxId" :selected-email-id="selectedEmailId" :view-mode="viewMode"
+          :visible-messages="visibleMessages" :total-count="totalEmailsCount" @set-view="setViewMode"
+          @select-message="selectMessage" @virt-range="onVirtRange" @update:filter-text="filterText = $event" />
+      </template>
+
+      <!-- Contacts View -->
+      <template v-else-if="currentView === 'contacts'">
+        <ContactManager
+          :contacts="contacts"
+          :selected-contact-id="selectedContactId"
+          @select-contact="selectContact"
+          @new-contact="openContactEditor"
+          @edit-contact="openContactEditor"
+          @delete-contact="(contact) => deleteContact(contact.id)"
+        />
+      </template>
+
+      <!-- Calendar View -->
+      <template v-else-if="currentView === 'calendar'">
+        <CalendarView />
+      </template>
 
       <!-- Detail & Compose -->
       <section class="detail">
+        <!-- Contact Editor -->
+        <ContactEditor :open="contactEditorOpen" :contact="editingContact" :saving="savingContact"
+          :status="contactStatus" :address-books="addressBooks" :selected-address-book-id="selectedAddressBookId"
+          @save="saveContact" @cancel="closeContactEditor" @delete="deleteContact"
+          @select-address-book="setSelectedAddressBook" />
+
         <!-- Compose Panel -->
-        <ComposePanel :compose-open="composeOpen" :compose="compose" :identities="identities" :sending="sending"
-          :compose-status="composeStatus" :compose-debug="composeDebug" @send="send" @discard="discard"
-          @update:compose="Object.assign(compose, $event)" />
+        <ComposePanel
+          :compose-open="composeOpen"
+          :compose="compose"
+          :identities="identities"
+          :contacts="contacts"
+          :sending="sending"
+          :compose-status="composeStatus"
+          :compose-debug="composeDebug"
+          :signature-text="signatureText"
+          :signature-enabled="signatureEnabled"
+          @send="send"
+          @discard="discard"
+          @update:compose="Object.assign(compose, $event)"
+          @update:signature="setSignatureText"
+          @update:signature-enabled="setSignatureEnabled"
+          @update:identity="({ id, name, email }) => updateIdentity(id, { name, email })"
+        />
 
         <!-- Message Detail -->
-        <MessageDetail :detail="detail" :attachments="attachments" :body-html="bodyHtml" :body-text="bodyText"
-          @back-to-list="backToList" @reply="replyToCurrent" @delete="deleteCurrent" @download="download" />
+        <MessageDetail 
+          :detail="detail" 
+          :attachments="attachments" 
+          :body-html="bodyHtml" 
+          :body-text="bodyText"
+          :headers="emailHeaders"
+          :raw-message="rawMessage"
+          :show-headers="showHeaders"
+          :show-raw-message="showRawMessage"
+          :mailboxes="mailboxes"
+          :current-mailbox-id="currentMailboxId"
+          @back-to-list="backToList" 
+          @reply="replyToCurrent" 
+          @delete="deleteCurrent" 
+          @download="download"
+          @load-headers="loadHeaders"
+          @load-raw-message="loadRawMessage"
+          @move-to-folder="moveEmailToFolder"
+        />
       </section>
     </main>
+
+    <!-- Event Editor (keep outside .detail so it's visible in calendar view) -->
+    <EventEditor 
+      v-if="connected"
+      :open="eventEditorOpen" 
+      :event="editingEvent"
+      @close="closeEventEditor"
+      @save="saveEvent"
+      @delete="deleteEvent"
+    />
   </div>
 </template>
 
