@@ -214,15 +214,8 @@ export default {
 
 <template>
   <div class="detail">
-    <div v-if="!detail.id" class="empty-detail">
-      <div class="empty-card">
-        <div class="empty-icon">📥</div>
-        <div class="empty-title">Welcome back</div>
-        <div class="empty-subtitle">Select a message to read it here.</div>
-      </div>
-    </div>
     <!-- Read panel -->
-    <div class="head" v-else>
+    <div class="head" v-if="detail.id">
       <div class="detailbar">
         <button id="backToList" class="btn-ghost backbtn" title="Back" @click="$emit('back-to-list')">
           ←

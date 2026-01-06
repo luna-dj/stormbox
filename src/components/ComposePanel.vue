@@ -1,5 +1,5 @@
 <script>
-import { ref, onMounted, watch, nextTick, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick, computed } from 'vue'
 import EmailAutocomplete from './EmailAutocomplete.vue'
 
 export default {
@@ -53,6 +53,216 @@ export default {
     const identityId = ref(null)
     const identityOriginalName = ref('')
     const identityOriginalEmail = ref('')
+    
+    // Fullscreen and resize state
+    const isFullscreen = ref(false)
+    const composeRef = ref(null)
+    const composeStyle = ref({})
+    const isResizing = ref(false)
+    const resizeDirection = ref(null)
+    const resizeStartPos = ref({ x: 0, y: 0 })
+    const resizeStartSize = ref({ width: 0, height: 0 })
+    const resizeStartPosition = ref({ left: 0, top: 0 })
+    
+    // Load saved size/position from localStorage
+    const loadComposeState = () => {
+      try {
+        const saved = localStorage.getItem('compose.state')
+        if (saved) {
+          const state = JSON.parse(saved)
+          composeStyle.value = {}
+          if (state.width) composeStyle.value.width = state.width + 'px'
+          if (state.height) composeStyle.value.height = state.height + 'px'
+          if (state.left !== undefined && state.left !== null) {
+            composeStyle.value.left = state.left + 'px'
+            composeStyle.value.right = ''
+          } else if (state.right !== undefined && state.right !== null) {
+            composeStyle.value.right = state.right + 'px'
+            composeStyle.value.left = ''
+          }
+          if (state.top !== undefined && state.top !== null) {
+            composeStyle.value.top = state.top + 'px'
+            composeStyle.value.bottom = ''
+          } else if (state.bottom !== undefined && state.bottom !== null) {
+            composeStyle.value.bottom = state.bottom + 'px'
+            composeStyle.value.top = ''
+          }
+        }
+      } catch (e) {
+        console.debug('Failed to load compose state:', e)
+      }
+    }
+    
+    // Save size/position to localStorage
+    const saveComposeState = () => {
+      if (isFullscreen.value) return // Don't save when fullscreen
+      try {
+        const rect = composeRef.value?.getBoundingClientRect()
+        if (!rect) return
+        
+        const state = {
+          width: rect.width,
+          height: rect.height,
+          left: rect.left,
+          top: rect.top,
+        }
+        localStorage.setItem('compose.state', JSON.stringify(state))
+      } catch (e) {
+        console.debug('Failed to save compose state:', e)
+      }
+    }
+    
+    const toggleFullscreen = () => {
+      isFullscreen.value = !isFullscreen.value
+      if (isFullscreen.value) {
+        // Save current position/size before going fullscreen
+        saveComposeState()
+        // Set inline styles to match reading pane width (930px) and center it
+        const maxWidth = window.innerWidth <= 930 ? '100vw' : '930px'
+        composeStyle.value = {
+          top: '0px',
+          left: window.innerWidth <= 930 ? '0px' : '50%',
+          right: window.innerWidth <= 930 ? '0px' : 'auto',
+          bottom: '0px',
+          width: maxWidth,
+          height: '100vh',
+          maxWidth: maxWidth,
+          maxHeight: '100vh',
+          minWidth: '0px',
+          minHeight: '0px',
+          transform: window.innerWidth <= 930 ? 'none' : 'translateX(-50%)'
+        }
+      } else {
+        // Clear inline styles first, then restore saved position/size
+        composeStyle.value = {}
+        nextTick(() => {
+          loadComposeState()
+        })
+      }
+    }
+    
+    const handleHeaderDoubleClick = (e) => {
+      // Only exit fullscreen on double-click, don't enter it
+      if (isFullscreen.value) {
+        e.preventDefault()
+        e.stopPropagation()
+        toggleFullscreen()
+      }
+    }
+    
+    const startResize = (direction, e) => {
+      if (isFullscreen.value) return
+      // Only start resize on left mouse button
+      if (e.button !== 0) return
+      
+      e.preventDefault()
+      e.stopPropagation()
+      isResizing.value = true
+      resizeDirection.value = direction
+      resizeStartPos.value = { x: e.clientX, y: e.clientY }
+      
+      const rect = composeRef.value?.getBoundingClientRect()
+      if (rect) {
+        resizeStartSize.value = { width: rect.width, height: rect.height }
+        resizeStartPosition.value = { left: rect.left, top: rect.top, right: window.innerWidth - rect.right, bottom: window.innerHeight - rect.bottom }
+      }
+      
+      document.addEventListener('mousemove', handleResize, { passive: false })
+      document.addEventListener('mouseup', stopResize, { once: true })
+    }
+    
+    const handleResize = (e) => {
+      if (!isResizing.value || !composeRef.value) return
+      e.preventDefault()
+      
+      const deltaX = e.clientX - resizeStartPos.value.x
+      const deltaY = e.clientY - resizeStartPos.value.y
+      
+      if (resizeDirection.value === 'right') {
+        const newWidth = resizeStartSize.value.width + deltaX
+        const minWidth = 400
+        const maxWidth = window.innerWidth - resizeStartPosition.value.left
+        if (newWidth >= minWidth && newWidth <= maxWidth) {
+          composeStyle.value.width = newWidth + 'px'
+        }
+      } else if (resizeDirection.value === 'bottom') {
+        const newHeight = resizeStartSize.value.height + deltaY
+        const minHeight = 300
+        const maxHeight = window.innerHeight - resizeStartPosition.value.top
+        if (newHeight >= minHeight && newHeight <= maxHeight) {
+          composeStyle.value.height = newHeight + 'px'
+        }
+      } else if (resizeDirection.value === 'corner') {
+        const newWidth = resizeStartSize.value.width + deltaX
+        const newHeight = resizeStartSize.value.height + deltaY
+        const minWidth = 400
+        const maxWidth = window.innerWidth - resizeStartPosition.value.left
+        const minHeight = 300
+        const maxHeight = window.innerHeight - resizeStartPosition.value.top
+        
+        if (newWidth >= minWidth && newWidth <= maxWidth) {
+          composeStyle.value.width = newWidth + 'px'
+        }
+        if (newHeight >= minHeight && newHeight <= maxHeight) {
+          composeStyle.value.height = newHeight + 'px'
+        }
+      }
+    }
+    
+    const stopResize = () => {
+      if (!isResizing.value) return
+      isResizing.value = false
+      resizeDirection.value = null
+      document.removeEventListener('mousemove', handleResize)
+      saveComposeState()
+    }
+    
+    // Load saved state on mount
+    onMounted(() => {
+      if (!isFullscreen.value) {
+        loadComposeState()
+      }
+    })
+    
+    // Watch for composeOpen to load state
+    watch(() => props.composeOpen, (open) => {
+      if (open && !isFullscreen.value) {
+        loadComposeState()
+      } else if (!open) {
+        // Cleanup when compose panel closes
+        stopResize()
+      }
+    })
+    
+    // Update fullscreen size on window resize
+    const handleWindowResize = () => {
+      if (isFullscreen.value) {
+        const maxWidth = window.innerWidth <= 930 ? '100vw' : '930px'
+        composeStyle.value = {
+          ...composeStyle.value,
+          left: window.innerWidth <= 930 ? '0px' : '50%',
+          right: window.innerWidth <= 930 ? '0px' : 'auto',
+          width: maxWidth,
+          maxWidth: maxWidth,
+          transform: window.innerWidth <= 930 ? 'none' : 'translateX(-50%)'
+        }
+      }
+    }
+    
+    // Watch for fullscreen changes and window resize
+    watch(isFullscreen, (fullscreen) => {
+      if (fullscreen) {
+        window.addEventListener('resize', handleWindowResize)
+      } else {
+        window.removeEventListener('resize', handleWindowResize)
+      }
+    })
+    
+    // Cleanup event listeners on unmount
+    onBeforeUnmount(() => {
+      stopResize()
+      window.removeEventListener('resize', handleWindowResize)
+    })
 
     const escapeHtml = (str) => {
       return String(str)
@@ -245,20 +455,36 @@ export default {
       openIdentityEditor,
       closeIdentityEditor,
       saveIdentity,
-      hideAutocomplete
+      hideAutocomplete,
+      isFullscreen,
+      composeRef,
+      composeStyle,
+      toggleFullscreen,
+      startResize,
+      handleHeaderDoubleClick
     }
   }
 }
 </script>
 
 <template>
-  <div id="compose" class="compose" :class="{ visible: composeOpen }">
+  <div id="compose" class="compose" :class="{ visible: composeOpen, fullscreen: isFullscreen }" :style="composeStyle" ref="composeRef">
     <div class="compose-shell">
-      <div class="compose-window-header">
+      <div class="compose-window-header" @dblclick="handleHeaderDoubleClick">
         <div class="compose-window-title">New message</div>
-        <button class="compose-window-close" @click="$emit('discard')" aria-label="Close">
-          ×
-        </button>
+        <div class="compose-window-actions" @mousedown.stop @dblclick.stop>
+          <button class="compose-window-btn" @click="toggleFullscreen" :title="isFullscreen ? 'Exit fullscreen' : 'Fullscreen'" aria-label="Toggle fullscreen">
+            <svg v-if="!isFullscreen" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+            </svg>
+            <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/>
+            </svg>
+          </button>
+          <button class="compose-window-close" @click="$emit('discard')" aria-label="Close">
+            ×
+          </button>
+        </div>
       </div>
       <div class="compose-header">
         <div class="row">
@@ -354,6 +580,10 @@ export default {
         {{ composeDebug }}
       </pre>
     </div>
+    <!-- Resize handles -->
+    <div v-if="!isFullscreen" class="resize-handle resize-handle-right" @mousedown="startResize('right', $event)"></div>
+    <div v-if="!isFullscreen" class="resize-handle resize-handle-bottom" @mousedown="startResize('bottom', $event)"></div>
+    <div v-if="!isFullscreen" class="resize-handle resize-handle-corner" @mousedown="startResize('corner', $event)"></div>
   </div>
 
   <div v-if="identityEditorOpen" class="identity-editor-overlay" @click.self="closeIdentityEditor">
@@ -386,15 +616,44 @@ export default {
   width: 520px;
   max-width: 92vw;
   height: 72vh;
+  min-width: 400px;
+  min-height: 300px;
   border: 1px solid var(--border);
   border-radius: 12px;
-  background: linear-gradient(180deg, rgba(17, 19, 26, 0.98), rgba(10, 12, 18, 0.98));
+  background: var(--panel) !important;
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
   z-index: 1400;
+  isolation: isolate;
 }
 
 .compose.visible {
   display: block;
+}
+
+.compose.fullscreen {
+  top: 0 !important;
+  left: 50% !important;
+  right: auto !important;
+  bottom: 0 !important;
+  width: 930px !important;
+  max-width: 930px !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  border-radius: 0;
+  margin: 0 !important;
+  transform: translateX(-50%) !important;
+}
+
+@media (max-width: 930px) {
+  .compose.fullscreen {
+    left: 0 !important;
+    right: 0 !important;
+    width: 100vw !important;
+    max-width: 100vw !important;
+    transform: none !important;
+  }
 }
 
 .compose-shell {
@@ -410,8 +669,43 @@ export default {
   justify-content: space-between;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
-  background: linear-gradient(90deg, rgba(22, 26, 38, 0.98), rgba(16, 19, 28, 0.98));
+  background: var(--panel2) !important;
   border-radius: 12px 12px 0 0;
+}
+
+.compose.fullscreen .compose-window-header {
+  border-radius: 0;
+}
+
+.compose-window-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compose-window-btn {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  position: relative;
+  z-index: 10;
+}
+
+.compose-window-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text);
+}
+
+.compose-window-btn:active {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 @media (max-width: 900px) {
@@ -433,10 +727,68 @@ export default {
   color: var(--muted);
   font-size: 18px;
   cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
 }
 
 .compose-window-close:hover {
+  background: rgba(255, 255, 255, 0.1);
   color: var(--text);
+}
+
+/* Resize handles */
+.resize-handle {
+  position: absolute;
+  background: transparent;
+  z-index: 1500;
+  transition: background 0.2s ease;
+}
+
+.resize-handle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.resize-handle-right {
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.resize-handle-right:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.resize-handle-bottom {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.resize-handle-bottom:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.resize-handle-corner {
+  right: 0;
+  bottom: 0;
+  width: 20px;
+  height: 20px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 0%, transparent 30%, rgba(255, 255, 255, 0.3) 30%, rgba(255, 255, 255, 0.3) 70%, transparent 70%);
+  border-radius: 0 0 12px 0;
+}
+
+.resize-handle-corner:hover {
+  background: linear-gradient(135deg, transparent 0%, transparent 30%, rgba(255, 255, 255, 0.5) 30%, rgba(255, 255, 255, 0.5) 70%, transparent 70%);
+}
+
+.compose.fullscreen .resize-handle {
+  display: none;
 }
 
 .compose-header {
@@ -444,7 +796,7 @@ export default {
   border-bottom: 1px solid var(--border);
   display: grid;
   gap: 10px;
-  background: rgba(11, 13, 19, 0.5);
+  background: var(--panel2) !important;
 }
 
 .compose .row {
@@ -638,14 +990,18 @@ export default {
 
 @media (max-width: 900px) {
   .compose {
-    left: 0;
-    right: 0;
-    top: 0;
-    bottom: 0;
-    width: auto;
-    height: auto;
-    max-width: none;
+    left: 0 !important;
+    right: 0 !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    max-width: 100vw !important;
+    max-height: 100vh !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
     border-radius: 0;
+    margin: 0 !important;
   }
 
   .compose .row {
@@ -663,6 +1019,14 @@ export default {
   .compose-footer {
     padding: 10px 12px;
     border-radius: 0;
+  }
+  
+  .compose-window-header {
+    border-radius: 0;
+  }
+  
+  .resize-handle {
+    display: none !important;
   }
 }
 
@@ -746,7 +1110,7 @@ export default {
   justify-content: space-between;
   padding: 10px 16px;
   border-top: 1px solid var(--border);
-  background: rgba(15, 18, 26, 0.9);
+  background: var(--panel2) !important;
   border-radius: 0 0 12px 12px;
 }
 

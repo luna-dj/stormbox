@@ -1,5 +1,5 @@
 <script>
-import { computed, provide, ref, reactive, watch, unref } from 'vue'
+import { computed, provide, ref, reactive, watch, unref, nextTick } from 'vue'
 import { useTheme } from './composables/useTheme.js'
 import LoginForm from './components/LoginForm.vue'
 import AccountProvider from './components/AccountProvider.vue'
@@ -108,7 +108,9 @@ export default {
     }
 
     const closeFolders = () => {
-      foldersOpen.value = false
+      nextTick(() => {
+        foldersOpen.value = false
+      })
     }
 
     const toggleFolders = () => {
@@ -117,7 +119,9 @@ export default {
 
     const switchMailboxAndClose = (mailboxId) => {
       switchMailbox(mailboxId)
-      foldersOpen.value = false
+      nextTick(() => {
+        foldersOpen.value = false
+      })
     }
 
     // Provide stores to child components
@@ -328,7 +332,9 @@ export default {
 
     watch(currentView, (view) => {
       if (view !== 'mail') {
-        foldersOpen.value = false
+        nextTick(() => {
+          foldersOpen.value = false
+        })
       }
     })
 
@@ -370,7 +376,9 @@ export default {
         currentView.value = 'calendar'
         // Refresh calendars when switching to calendar view
         refreshCalendars()
-        foldersOpen.value = false
+        nextTick(() => {
+          foldersOpen.value = false
+        })
       } else {
         currentView.value = view
         const emailView = activeEmailStore.value?.currentView
@@ -382,7 +390,9 @@ export default {
           }
         }
         switchViewMode(view)
-        foldersOpen.value = false
+        nextTick(() => {
+          foldersOpen.value = false
+        })
       }
     }
 

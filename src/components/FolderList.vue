@@ -19,6 +19,21 @@ export default {
   },
   emits: ['compose', 'reload', 'switch-mailbox', 'set-account', 'add-account', 'logout'],
   setup(props) {
+    const isMobile = ref(window.innerWidth <= 900)
+    
+    const checkMobile = () => {
+      isMobile.value = window.innerWidth <= 900
+    }
+    
+    onMounted(() => {
+      window.addEventListener('resize', checkMobile)
+      checkMobile()
+    })
+    
+    onBeforeUnmount(() => {
+      window.removeEventListener('resize', checkMobile)
+    })
+    
     const displayName = (m) => {
       const role = (m.role || "").toLowerCase(), mailboxName = (m.name || "").toLowerCase();
       if (role === "trash" || mailboxName === "deleted items" || mailboxName === "trash") return "Trash";
@@ -100,7 +115,8 @@ export default {
       showAccountMenu,
       toggleQuickMenu,
       toggleAccountMenu,
-      closeMenus
+      closeMenus,
+      isMobile
     }
   }
 }
@@ -112,7 +128,7 @@ export default {
       <div class="avatar">{{ (profileName || profileEmail || 'ME').slice(0, 2).toUpperCase() }}</div>
       <div class="profile-text">
         <div class="profile-name">{{ profileName || 'Account' }}</div>
-        <div class="profile-sub">Thundermail</div>
+        <div class="profile-sub">Hivepost</div>
       </div>
       <div class="profile-actions">
         <button class="icon-btn" title="Quick actions" @click.stop="toggleQuickMenu">⋯</button>
@@ -190,7 +206,7 @@ export default {
           :class="[{ active: m.id === currentMailboxId }, { unread: (m.unreadEmails || 0) > 0 }]"
           @click="$emit('switch-mailbox', m.id)">
           <div class="name">{{ displayName(m) }}</div>
-          <div class="count" v-html="unreadBadge(m)"></div>
+          <div v-if="!isMobile" class="count" v-html="unreadBadge(m)"></div>
         </div>
       </div>
 
@@ -200,7 +216,7 @@ export default {
           :class="[{ active: m.id === currentMailboxId }, { unread: (m.unreadEmails || 0) > 0 }]"
           @click="$emit('switch-mailbox', m.id)">
           <div class="name">{{ displayName(m) }}</div>
-          <div class="count" v-html="unreadBadge(m)"></div>
+          <div v-if="!isMobile" class="count" v-html="unreadBadge(m)"></div>
         </div>
       </div>
     </div>
@@ -446,6 +462,13 @@ export default {
   font-size: 12px;
 }
 
+@media (max-width: 900px) {
+  .mbox .count,
+  .mobile-hide {
+    display: none !important;
+  }
+}
+
 .mbox.unread .name {
   font-weight: 700;
   color: var(--text);
@@ -456,8 +479,13 @@ export default {
   color: var(--text);
 }
 
-
 @media (max-width: 900px) {
+  .mbox .count,
+  .mbox.unread .count,
+  .mobile-hide {
+    display: none !important;
+  }
+
   .folders {
     border-right: 0;
     border-bottom: 1px solid var(--border);

@@ -435,6 +435,13 @@ export default {
   font-size: 12px;
 }
 
+@media (max-width: 900px) {
+  .folder-count,
+  #folderTotal {
+    display: none !important;
+  }
+}
+
 .folder-actions {
   display: flex;
   align-items: center;

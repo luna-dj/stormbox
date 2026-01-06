@@ -1,3 +1,7 @@
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Space+Grotesk:wght@400;500;600&display=swap");
+
+@import url("https://fonts.googleapis.com/css2?family=Fraunces:wght@600;700&family=Space+Grotesk:wght@400;500;600&display=swap");
+
 :root {
   /* Default to dark; system light overrides below */
   --bg: #0b0c0f;
@@ -98,7 +102,7 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 14px/1.4 system-ui, Segoe UI, Roboto, sans-serif;
+  font: 14px/1.4 "Space Grotesk", system-ui, Segoe UI, Roboto, sans-serif;
   height: 100vh;
   overflow: hidden;
   transition: background-color 0.18s ease, color 0.18s ease;
@@ -123,8 +127,9 @@ header {
   gap: 0.6rem;
   align-items: center;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   background: var(--panel);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
 header .header-nav {
@@ -135,23 +140,26 @@ header .header-nav {
 
 .nav-btn {
   padding: 6px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--panel2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text);
   cursor: pointer;
   font-size: 13px;
   font-weight: 500;
+  transition: all 0.2s ease;
 }
 
 .nav-btn:hover {
-  background: var(--rowHover);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .nav-btn.active {
   background: var(--accent);
   color: #fff;
   border-color: var(--accent);
+  box-shadow: 0 2px 8px rgba(79, 140, 255, 0.3);
 }
 
 header strong {
@@ -214,31 +222,38 @@ main.hide-detail .detail {
   }
 
   header {
-    flex-wrap: wrap;
-    gap: 8px;
-    padding: 10px 12px;
+    flex-wrap: nowrap;
+    gap: 6px;
+    padding: 8px 10px;
+    justify-content: space-between;
   }
 
   header .header-nav {
     display: none;
-    order: 1;
-    flex: 1 1 100%;
-    margin-right: 0;
   }
 
   header strong {
-    order: 2;
-    width: 100%;
+    font-size: 14px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  header .header-btn,
+  header .header-btn:not(.mobile-only),
   header .theme-toggle {
+    display: none;
+  }
+
+  header .header-btn.mobile-only {
     padding: 6px 10px;
+    font-size: 12px;
   }
 
   main {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr;
+    grid-template-rows: 1fr;
   }
 
   main.contacts-view {
@@ -251,16 +266,17 @@ main.hide-detail .detail {
 
   .list {
     border-right: 0;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 0;
   }
 
   .detail {
-    border-top: 1px solid var(--border);
+    border-top: 0;
   }
 
   .row {
     grid-template-columns: 1fr;
     align-items: stretch;
+    gap: 6px;
   }
 }
 
@@ -270,25 +286,29 @@ main.hide-detail .detail {
 
 @media (max-width: 900px) {
   .mobile-tabs {
-    position: sticky;
+    position: fixed;
     bottom: 0;
+    left: 0;
+    right: 0;
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     background: var(--panel);
     border-top: 1px solid var(--border);
     z-index: 1000;
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
   }
 
   .tab-btn {
-    padding: 12px 10px;
+    padding: 14px 8px;
     background: transparent;
     border: 0;
     color: var(--muted);
     font-weight: 600;
+    font-size: 13px;
   }
 
   .tab-btn.active {
-    color: var(--text);
+    color: var(--accent);
   }
 }
 
@@ -318,12 +338,14 @@ main.hide-detail .detail {
   min-height: 0;
   height: 100%;
   overflow: hidden;
+  background: var(--panel);
 }
 
 .folders-panel {
   display: flex;
   flex-direction: column;
-  border-right: 1px solid var(--border);
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--panel);
 }
 
 .folders-scrim {
@@ -343,13 +365,14 @@ main.hide-detail .detail {
     position: fixed;
     left: 0;
     top: 0;
-    bottom: 0;
-    width: min(82vw, 320px);
-    background: var(--panel2);
+    bottom: 64px;
+    width: min(85vw, 300px);
+    background: var(--panel);
     transform: translateX(-100%);
-    transition: transform 0.2s ease;
+    transition: transform 0.25s ease;
     z-index: 1200;
     border-right: 1px solid var(--border);
+    box-shadow: 2px 0 12px rgba(0, 0, 0, 0.15);
   }
 
   .folders-panel.open {
@@ -364,10 +387,10 @@ main.hide-detail .detail {
     display: block;
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.45);
+    background: rgba(0, 0, 0, 0.5);
     opacity: 0;
     pointer-events: none;
-    transition: opacity 0.2s ease;
+    transition: opacity 0.25s ease;
     z-index: 1100;
   }
 
@@ -383,16 +406,18 @@ main.hide-detail .detail {
   align-items: center;
   gap: 6px;
   padding: 8px 12px;
-  border: 1px solid var(--border);
-  border-radius: 0.6rem;
-  background: var(--panel2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text);
   font-size: 13px;
   font-weight: 500;
+  transition: all 0.2s ease;
 }
 
 .header-btn:hover {
-  background: var(--rowHover);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 .header-btn svg {
@@ -406,14 +431,16 @@ main.hide-detail .detail {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
-  border-radius: 0.6rem;
-  background: var(--panel2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text);
+  transition: all 0.2s ease;
 }
 
 .theme-toggle:hover {
-  background: var(--rowHover);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.15);
 }
 
 /* Global button styles */
@@ -466,12 +493,19 @@ select {
 .row input,
 .row select {
   width: 100%;
-  padding: 0.5rem 0.65rem;
-  border: 1px solid var(--border);
-  border-radius: 0.5rem;
-  background: var(--panel2);
+  padding: 0.72rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  background: rgba(15, 17, 23, 0.9);
   color: var(--text);
   outline: none;
+  transition: all 0.2s ease;
+}
+
+.row input:focus,
+.row select:focus {
+  outline: 2px solid rgba(79, 140, 255, 0.35);
+  border-color: rgba(79, 140, 255, 0.6);
 }
 
 .row input::placeholder {
@@ -479,6 +513,6 @@ select {
 }
 
 .row input:-webkit-autofill {
-  -webkit-box-shadow: 0 0 0px 1000px var(--panel2) inset;
+  -webkit-box-shadow: 0 0 0px 1000px rgba(15, 17, 23, 0.9) inset;
   -webkit-text-fill-color: var(--text);
 }
