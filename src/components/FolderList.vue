@@ -18,7 +18,7 @@ export default {
     profileEmail: String
   },
   emits: ['compose', 'reload', 'switch-mailbox', 'set-account', 'add-account', 'logout'],
-  setup(props) {
+  setup(props, { emit }) {
     const isMobile = ref(window.innerWidth <= 900)
     
     const checkMobile = () => {
@@ -84,6 +84,31 @@ export default {
       showAccountMenu.value = false
     }
 
+    const handleSetAccount = (accountId) => {
+      closeMenus()
+      emit('set-account', accountId)
+    }
+
+    const handleAddAccount = () => {
+      closeMenus()
+      emit('add-account')
+    }
+
+    const handleCompose = () => {
+      closeMenus()
+      emit('compose')
+    }
+
+    const handleReload = () => {
+      closeMenus()
+      emit('reload')
+    }
+
+    const handleLogout = () => {
+      closeMenus()
+      emit('logout')
+    }
+
     onMounted(() => {
       document.addEventListener('click', closeMenus)
     })
@@ -116,6 +141,11 @@ export default {
       toggleQuickMenu,
       toggleAccountMenu,
       closeMenus,
+      handleSetAccount,
+      handleAddAccount,
+      handleCompose,
+      handleReload,
+      handleLogout,
       isMobile
     }
   }
@@ -135,10 +165,10 @@ export default {
         <button class="icon-btn" title="Accounts" @click.stop="toggleAccountMenu">☰</button>
 
         <div v-if="showQuickMenu" class="menu" @click.stop>
-          <button class="menu-item" @click="closeMenus(); $emit('compose')">New message</button>
-          <button class="menu-item" @click="closeMenus(); $emit('reload')">Reload</button>
+          <button class="menu-item" @click="handleCompose">New message</button>
+          <button class="menu-item" @click="handleReload">Reload</button>
           <div class="menu-divider"></div>
-          <button class="menu-item" @click="closeMenus(); $emit('logout')">Logout</button>
+          <button class="menu-item" @click="handleLogout">Logout</button>
         </div>
 
         <div v-if="showAccountMenu" class="menu" @click.stop>
@@ -148,20 +178,20 @@ export default {
             :key="account.id"
             class="menu-item"
             :class="{ active: account.id === activeAccountId }"
-            @click="closeMenus(); $emit('set-account', account.id)"
+            @click="handleSetAccount(account.id)"
           >
             <span class="menu-main">{{ account.label || account.email || account.id }}</span>
             <span class="menu-sub">{{ account.email || account.id }}</span>
           </button>
           <div v-if="!accounts.length" class="menu-empty">No accounts added</div>
           <div class="menu-divider"></div>
-          <button class="menu-item" @click="closeMenus(); $emit('add-account')">Add account…</button>
+          <button class="menu-item" @click="handleAddAccount">Add account…</button>
         </div>
       </div>
     </div>
 
     <div class="ftools">
-      <button id="composeBtn" title="New message" @click="$emit('compose')">
+      <button id="composeBtn" title="New message" @click="handleCompose">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
           stroke-linejoin="round" aria-hidden="true">
           <path d="M12 20h9" />

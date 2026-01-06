@@ -172,6 +172,17 @@ export default {
     }
 
     const setActiveAccount = (accountId) => {
+      // Clear selected email when switching accounts
+      selectedEmailId.value = null
+      // Clear email from URL when switching accounts
+      if (window.history && window.location) {
+        const url = new URL(window.location)
+        if (url.searchParams.has('email')) {
+          url.searchParams.delete('email')
+          window.history.replaceState({ view: currentView.value }, '', url)
+        }
+      }
+      // Switch to the new account
       activeAccountId.value = accountId
     }
 
