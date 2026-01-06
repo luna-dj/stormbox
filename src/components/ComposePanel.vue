@@ -253,104 +253,107 @@ export default {
 
 <template>
   <div id="compose" class="compose" :class="{ visible: composeOpen }">
-    <div class="actions">
-      <!-- Send on the left -->
-      <button id="c-send" type="button" :disabled="sending" @click="$emit('send')" title="Send">
-        <!-- paper plane -->
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-          stroke-linejoin="round" aria-hidden="true">
-          <path d="M22 2L11 13" />
-          <path d="M22 2l-7 20-4-9-9-4 20-7z" />
-        </svg>
-        <span>Send</span>
-      </button>
-
-      <!-- Discard on the right -->
-      <button id="c-cancel" type="button" @click="$emit('discard')" title="Discard draft">
-        <!-- trash -->
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
-          stroke-linejoin="round" aria-hidden="true">
-          <polyline points="3 6 5 6 21 6" />
-          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-          <path d="M10 11v6M14 11v6" />
-          <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
-        </svg>
-        <span>Discard</span>
-      </button>
-    </div>
-
-    <div class="row">
-      <label>From</label>
-      <div class="from-row">
-        <select id="c-from" v-model="compose.fromIdx">
-          <option v-for="(id, idx) in identities" :key="id.id" :value="idx">
-            {{ (id.name ? (id.name + ' ') : '') + '<' + id.email + '>' }} </option>
-        </select>
-        <button type="button" class="btn-ghost" :disabled="!identities.length" @click="openIdentityEditor">
-          Edit
+    <div class="compose-shell">
+      <div class="compose-window-header">
+        <div class="compose-window-title">New message</div>
+        <button class="compose-window-close" @click="$emit('discard')" aria-label="Close">
+          ×
         </button>
       </div>
-    </div>
+      <div class="compose-header">
+        <div class="row">
+          <label>From</label>
+          <div class="from-row">
+            <select id="c-from" v-model="compose.fromIdx">
+              <option v-for="(id, idx) in identities" :key="id.id" :value="idx">
+                {{ (id.name ? (id.name + ' ') : '') + '<' + id.email + '>' }} </option>
+            </select>
+            <button type="button" class="btn-ghost" :disabled="!identities.length" @click="openIdentityEditor">
+              Edit
+            </button>
+          </div>
+        </div>
 
-    <div class="row" style="position: relative;">
-      <label>To</label>
-      <input 
-        id="c-to" 
-        ref="toInputRef"
-        v-model="compose.to" 
-        placeholder="alice@example.com, Bob &lt;bob@example.com&gt;"
-        autocomplete="off"
-        @focus="showAutocomplete = true"
-        @blur="hideAutocomplete"
-        @input="$emit('update:compose', { ...compose, to: $event.target.value })"
-      >
-      <EmailAutocomplete
-        :query="currentQuery"
-        :contacts="contacts"
-        :show="shouldShowAutocomplete"
-        @select="selectEmail"
-      />
-    </div>
+        <div class="row" style="position: relative;">
+          <label>To</label>
+          <input 
+            id="c-to" 
+            ref="toInputRef"
+            v-model="compose.to" 
+            placeholder="alice@example.com, Bob &lt;bob@example.com&gt;"
+            autocomplete="off"
+            @focus="showAutocomplete = true"
+            @blur="hideAutocomplete"
+            @input="$emit('update:compose', { ...compose, to: $event.target.value })"
+          >
+          <EmailAutocomplete
+            :query="currentQuery"
+            :contacts="contacts"
+            :show="shouldShowAutocomplete"
+            @select="selectEmail"
+          />
+        </div>
 
-    <div class="row">
-      <label>Subject</label>
-      <input id="c-subj" v-model="compose.subject" placeholder="Subject">
-    </div>
+        <div class="row">
+          <label>Subject</label>
+          <input id="c-subj" v-model="compose.subject" placeholder="Subject">
+        </div>
 
-    <div class="row">
-      <label>Signature</label>
-      <div class="signature-field">
-        <textarea
-          id="c-signature"
-          :value="signatureText"
-          rows="3"
-          placeholder="Add a signature"
-          @input="$emit('update:signature', $event.target.value)"
-        ></textarea>
-        <div class="signature-actions">
-          <label class="signature-toggle">
-            <input
-              type="checkbox"
-              :checked="signatureEnabled"
-              @change="$emit('update:signatureEnabled', $event.target.checked)"
-            />
-            Use signature when sending
-          </label>
-          <button type="button" class="btn-ghost" @click="insertSignature">
-            Insert signature into body
+        <div class="row signature-row">
+          <label>Signature</label>
+          <div class="signature-field">
+            <textarea
+              id="c-signature"
+              :value="signatureText"
+              rows="3"
+              placeholder="Add a signature"
+              @input="$emit('update:signature', $event.target.value)"
+            ></textarea>
+            <div class="signature-actions">
+              <label class="signature-toggle">
+                <input
+                  type="checkbox"
+                  :checked="signatureEnabled"
+                  @change="$emit('update:signatureEnabled', $event.target.checked)"
+                />
+                Use signature when sending
+              </label>
+              <button type="button" class="btn-ghost" @click="insertSignature">
+                Insert signature into body
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="compose-body">
+        <div id="c-editor" class="editor"></div>
+      </div>
+
+      <div class="compose-footer">
+        <div class="compose-meta">
+          <span id="c-status">{{ composeStatus }}</span>
+        </div>
+        <div class="compose-actions">
+          <button id="c-cancel" type="button" @click="$emit('discard')" title="Discard draft">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+              stroke-linejoin="round" aria-hidden="true">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+            </svg>
+          </button>
+          <button id="c-send" type="button" :disabled="sending" @click="$emit('send')" title="Send">
+            <span>Send</span>
           </button>
         </div>
       </div>
-    </div>
 
-    <div class="row body-row">
-      <div id="c-editor" class="editor"></div>
+      <pre id="c-debug" class="debug" style="display:block; white-space:pre-wrap;" v-if="composeDebug">
+        {{ composeDebug }}
+      </pre>
     </div>
-
-    <div class="meta" id="c-status">{{ composeStatus }}</div>
-    <pre id="c-debug" class="debug" style="display:block; white-space:pre-wrap;" v-if="composeDebug">
-      {{ composeDebug }}
-    </pre>
   </div>
 
   <div v-if="identityEditorOpen" class="identity-editor-overlay" @click.self="closeIdentityEditor">
@@ -377,35 +380,107 @@ export default {
 <style scoped>
 .compose {
   display: none;
-  border-bottom: 1px solid var(--border);
-  padding: 12px 16px;
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 520px;
+  max-width: 92vw;
+  height: 72vh;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45);
+  z-index: 1400;
 }
 
 .compose.visible {
   display: block;
 }
 
+.compose-shell {
+  display: grid;
+  grid-template-rows: auto auto minmax(120px, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+}
+
+.compose-window-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel2);
+  border-radius: 12px 12px 0 0;
+}
+
+@media (max-width: 900px) {
+  .compose-window-header {
+    border-radius: 0;
+  }
+}
+
+.compose-window-title {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.compose-window-close {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.compose-window-close:hover {
+  color: var(--text);
+}
+
+.compose-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  gap: 8px;
+}
+
 .compose .row {
-  grid-template-columns: 80px minmax(0, 1fr);
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+}
+
+.compose-header .row {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.compose-header .row:last-child {
+  border-bottom: 0;
 }
 
 .compose .row>* {
   min-width: 0;
 }
 
-.compose .row.body-row {
-  align-items: start;
-}
-
-.compose .row.body-row label {
-  padding-top: 6px;
-}
-
 .compose .row input,
 .compose .row select {
   width: 100%;
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  padding: 6px 0;
 }
 
+/* Text inputs */
+#c-to,
+#c-subj,
+#c-from {
+  font-size: 14px;
+}
 
 .from-row {
   display: grid;
@@ -413,50 +488,18 @@ export default {
   gap: 8px;
 }
 
-.compose .actions {
+.signature-row {
+  align-items: start;
+}
+
+.compose-body {
+  background: var(--compose-editor-bg);
+  color: var(--compose-editor-text);
+  min-height: 0;
   display: flex;
-  gap: .6rem;
-  justify-content: flex-start;
-  order: -1;
-  padding: 0 0 8px 0;
-}
-
-.compose .actions button {
-  padding: .55rem .9rem;
-  border: 0;
-  border-radius: .6rem;
-  background: var(--accent);
-  color: #fff;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: .45rem;
-}
-
-.compose .actions svg {
-  width: 16px;
-  height: 16px;
-  display: block;
-}
-
-.compose .actions button:hover {
-  filter: brightness(1.08);
-}
-
-.compose .actions #c-send[disabled] {
-  opacity: .6;
-  cursor: not-allowed;
-}
-
-/* Text inputs */
-#c-to,
-#c-subj,
-#c-from {
-  padding: .5rem .65rem;
-  border: 1px solid var(--border);
-  border-radius: .5rem;
-  background: var(--panel2);
-  color: var(--text);
+  flex-direction: column;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 #c-signature {
@@ -571,7 +614,14 @@ export default {
 
 @media (max-width: 900px) {
   .compose {
-    padding: 10px 12px;
+    left: 0;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: auto;
+    height: auto;
+    max-width: none;
+    border-radius: 0;
   }
 
   .compose .row {
@@ -582,24 +632,14 @@ export default {
     grid-template-columns: 1fr;
   }
 
-  #c-editor {
-    min-height: 240px;
+  .compose-header {
+    padding: 10px 12px;
   }
 
-  .compose .row.body-row {
-    grid-template-columns: 1fr;
-    align-items: stretch;
+  .compose-footer {
+    padding: 10px 12px;
+    border-radius: 0;
   }
-
-  .compose .row.body-row label {
-    margin-bottom: 4px;
-  }
-
-  .compose .row.body-row :deep(.ql-toolbar),
-  .compose .row.body-row :deep(.ql-container) {
-    grid-column: 1 / -1;
-  }
-
 }
 
 .identity-editor-actions {
@@ -616,7 +656,7 @@ export default {
   overflow: auto;
   padding: 8px;
   border: 1px solid var(--border);
-  background: #0e1220;
+  background: var(--panel2);
   border-radius: .5rem;
 }
 
@@ -626,8 +666,8 @@ export default {
   flex-direction: column;
   width: 100%;
   min-width: 0;
-  min-height: 320px;
-  /* larger default editor */
+  min-height: 0;
+  height: 100%;
 }
 
 /* Ensure all Quill pieces stretch (scoped -> deep to reach Quill DOM) */
@@ -637,37 +677,95 @@ export default {
   width: 100%;
 }
 
-.compose .row.body-row :deep(.ql-toolbar),
-.compose .row.body-row :deep(.ql-container) {
-  grid-column: 2 / -1;
+.compose-body #c-editor :deep(.ql-toolbar) {
+  order: 2;
+  background: var(--compose-toolbar-bg);
+  border: 1px solid var(--compose-toolbar-border);
+  border-radius: 0 0 8px 8px;
 }
 
-/* Give the editor body a sensible height within the compose area */
-#c-editor :deep(.ql-container) {
+.compose-body #c-editor :deep(.ql-toolbar .ql-stroke) {
+  stroke: var(--compose-editor-text);
+}
+
+.compose-body #c-editor :deep(.ql-toolbar .ql-fill) {
+  fill: var(--compose-editor-text);
+}
+
+.compose-body #c-editor :deep(.ql-toolbar .ql-picker) {
+  color: var(--compose-editor-text);
+}
+
+.compose-body #c-editor :deep(.ql-container) {
+  order: 1;
+  background: var(--compose-editor-bg);
+  border: 1px solid var(--compose-toolbar-border);
+  border-bottom: 0;
+  border-radius: 0;
   flex: 1 1 auto;
-  min-height: 280px;
+  min-height: 0;
 }
 
-/* Dark theme tweaks for Quill toolbar */
-#c-editor :deep(.ql-toolbar) {
-  background: var(--panel2);
-  border: 1px solid var(--border);
-  border-radius: .5rem .5rem 0 0;
-}
-
-#c-editor :deep(.ql-container) {
-  background: var(--panel2);
-  border: 1px solid var(--border);
-  border-top: 0;
-  border-radius: 0 0 .5rem .5rem;
-}
-
-#c-editor :deep(.ql-editor) {
-  color: var(--text);
+.compose-body #c-editor :deep(.ql-editor) {
+  color: var(--compose-editor-text);
+  min-height: 120px;
 }
 
 #c-editor :deep(.ql-editor.ql-blank::before) {
   color: var(--muted);
   font-style: normal;
+}
+
+.compose-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--panel2);
+  border-radius: 0 0 12px 12px;
+}
+
+.compose-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.compose-actions #c-cancel {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.compose-actions #c-send {
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  min-width: 88px;
+}
+
+.compose-actions #c-send[disabled] {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.compose-actions svg {
+  width: 16px;
+  height: 16px;
+}
+
+.compose-meta {
+  color: var(--muted);
+  font-size: 12px;
 }
 </style>

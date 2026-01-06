@@ -73,7 +73,9 @@ export default {
         startTime.value = formatTimeInput(now)
         endDate.value = formatDateInput(now)
         endTime.value = formatTimeInput(new Date(now.getTime() + 60 * 60 * 1000)) // +1 hour
-        calendarId.value = calendarStore.selectedCalendarIds.value[0] || ''
+        calendarId.value = calendarStore?.selectedCalendarIds?.value?.[0] ||
+          calendarStore?.calendars?.value?.[0]?.id ||
+          ''
         allDay.value = false
       }
     }, { immediate: true })
@@ -95,7 +97,7 @@ export default {
       }
 
       const eventData = {
-        calendarId: calendarId.value || calendarStore.calendars.value[0]?.id,
+        calendarId: calendarId.value || calendarStore?.calendars?.value?.[0]?.id,
         title: title.value.trim(),
         description: description.value.trim(),
         location: location.value.trim(),
@@ -140,7 +142,7 @@ export default {
       calendarId,
       allDay,
       isEditing,
-      calendars: computed(() => calendarStore.calendars.value),
+      calendars: computed(() => calendarStore?.calendars?.value || []),
       save,
       deleteEvent,
     }

@@ -9,6 +9,14 @@
   --accent: #4f8cff;
   --rowHover: #14182a;
   --rowActive: #182041;
+  --compose-editor-bg: #0f1117;
+  --compose-editor-text: #e6e8ef;
+  --compose-toolbar-bg: #151822;
+  --compose-toolbar-border: #262b3d;
+  --message-body-bg: #0f1117;
+  --message-body-text: #e6e8ef;
+  --message-body-track: #0c0f16;
+  --message-body-thumb: #9aa3b2;
   color-scheme: dark light;
 }
 
@@ -24,6 +32,14 @@
   --accent: #4f8cff;
   --rowHover: #14182a;
   --rowActive: #182041;
+  --compose-editor-bg: #0f1117;
+  --compose-editor-text: #e6e8ef;
+  --compose-toolbar-bg: #151822;
+  --compose-toolbar-border: #262b3d;
+  --message-body-bg: #0f1117;
+  --message-body-text: #e6e8ef;
+  --message-body-track: #0c0f16;
+  --message-body-thumb: #9aa3b2;
 }
 
 :root[data-theme="light"],
@@ -37,6 +53,14 @@
   --accent: #4f8cff;
   --rowHover: #eef2ff; /* soft accent-tint for hover */
   --rowActive: #e0e9ff; /* slightly stronger for selected */
+  --compose-editor-bg: #ffffff;
+  --compose-editor-text: #111827;
+  --compose-toolbar-bg: #f4f7fb;
+  --compose-toolbar-border: #dbe1ea;
+  --message-body-bg: #ffffff;
+  --message-body-text: #111827;
+  --message-body-track: #f4f7fb;
+  --message-body-thumb: #9ca3af;
 }
 
 /* If user prefers light and no explicit theme chosen, use light */
@@ -50,6 +74,14 @@
     --muted: #6b7280;
     --rowHover: #eef2ff;
     --rowActive: #e0e9ff;
+    --compose-editor-bg: #ffffff;
+    --compose-editor-text: #111827;
+    --compose-toolbar-bg: #f4f7fb;
+    --compose-toolbar-border: #dbe1ea;
+    --message-body-bg: #ffffff;
+    --message-body-text: #111827;
+    --message-body-track: #f4f7fb;
+    --message-body-thumb: #9ca3af;
   }
 }
 
@@ -90,7 +122,7 @@ header {
   display: flex;
   gap: 0.6rem;
   align-items: center;
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
@@ -104,8 +136,8 @@ header .header-nav {
 .nav-btn {
   padding: 6px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
+  border-radius: 8px;
+  background: var(--panel2);
   color: var(--text);
   cursor: pointer;
   font-size: 13px;
@@ -113,7 +145,7 @@ header .header-nav {
 }
 
 .nav-btn:hover {
-  background: var(--panel2);
+  background: var(--rowHover);
 }
 
 .nav-btn.active {
@@ -267,7 +299,7 @@ main.hide-detail .detail {
     display: none;
   }
 
-  main.mobile-detail-open .detail {
+  main.mobile-detail-open > .detail {
     display: block;
   }
 
@@ -275,7 +307,7 @@ main.hide-detail .detail {
     display: none;
   }
 
-  main.mobile-contact-open .detail {
+  main.mobile-contact-open > .detail {
     display: block;
   }
 }
@@ -324,6 +356,10 @@ main.hide-detail .detail {
     transform: translateX(0);
   }
 
+  .folders-panel .drafts-list {
+    display: none;
+  }
+
   .folders-scrim {
     display: block;
     position: fixed;
@@ -349,14 +385,14 @@ main.hide-detail .detail {
   padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: 0.6rem;
-  background: transparent;
+  background: var(--panel2);
   color: var(--text);
   font-size: 13px;
   font-weight: 500;
 }
 
 .header-btn:hover {
-  background: var(--panel2);
+  background: var(--rowHover);
 }
 
 .header-btn svg {
@@ -372,12 +408,12 @@ main.hide-detail .detail {
   justify-content: center;
   border: 1px solid var(--border);
   border-radius: 0.6rem;
-  background: transparent;
+  background: var(--panel2);
   color: var(--text);
 }
 
 .theme-toggle:hover {
-  background: var(--panel2);
+  background: var(--rowHover);
 }
 
 /* Global button styles */

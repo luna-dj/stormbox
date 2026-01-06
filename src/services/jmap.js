@@ -269,7 +269,25 @@ export class JMAPClient {
   }
   /* ---------- mailboxes & identities ---------- */
   async listMailboxes() {
-    // If accountId is not set, try possible accountIds from username
+    // If still no accountId, try querying without accountId (some servers allow this)
+    if (!this.accountId) {
+      console.debug('[JMAP] Trying mailbox query without accountId...');
+      try {
+        const testResponse = await this.jmap({
+          using: [CORE, MAIL],
+          methodCalls: [["Mailbox/query", { sort: [{ property: "name", isAscending: true }], limit: 1 }, "test2"]],
+        });
+        const result = testResponse.methodResponses.find((x) => x[0] === "Mailbox/query");
+        if (result && result[0] !== "error" && result[1]?.accountId) {
+          this.accountId = result[1].accountId;
+          console.debug('[JMAP] Got accountId from mailbox query response:', this.accountId);
+        }
+      } catch (e) {
+        console.debug('[JMAP] Query without accountId failed:', e.message);
+      }
+    }
+
+    // If accountId is still not set, try possible accountIds from username
     if (!this.accountId && this._possibleAccountIds) {
       console.debug('[JMAP] Trying possible accountIds:', this._possibleAccountIds);
       for (const possibleId of this._possibleAccountIds) {
@@ -314,24 +332,6 @@ export class JMAPClient {
           }
           continue;
         }
-      }
-    }
-    
-    // If still no accountId, try querying without accountId (some servers allow this)
-    if (!this.accountId) {
-      console.debug('[JMAP] Trying mailbox query without accountId...');
-      try {
-        const testResponse = await this.jmap({
-          using: [CORE, MAIL],
-          methodCalls: [["Mailbox/query", { sort: [{ property: "name", isAscending: true }], limit: 1 }, "test2"]],
-        });
-        const result = testResponse.methodResponses.find((x) => x[0] === "Mailbox/query");
-        if (result && result[0] !== "error" && result[1]?.accountId) {
-          this.accountId = result[1].accountId;
-          console.debug('[JMAP] Got accountId from mailbox query response:', this.accountId);
-        }
-      } catch (e) {
-        console.debug('[JMAP] Query without accountId failed:', e.message);
       }
     }
     

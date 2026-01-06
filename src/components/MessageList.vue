@@ -10,6 +10,7 @@ export default {
   },
   props: {
     currentMailboxId: String,
+    currentMailboxName: String,
     selectedEmailId: String,
     viewMode: String,
     visibleMessages: Array,
@@ -23,9 +24,17 @@ export default {
     const rowHeight = ref(56)
     const debugInfo = false
 
-    const sortPropForBox = (boxId) => {
-      // This would need to be passed from parent or computed differently
-      return 'receivedAt'
+    const sortPropForBox = () => {
+      const name = (props.currentMailboxName || "").toLowerCase()
+      return name === "sent" || name === "sent items" ? "sentAt" : "receivedAt"
+    }
+
+    const dateForItem = (item) => {
+      if (!item) return ""
+      const sortProp = sortPropForBox()
+      return sortProp === "sentAt"
+        ? (item.sentAt || item.receivedAt || "")
+        : (item.receivedAt || item.sentAt || "")
     }
 
     const fmtDate = (iso) => {
@@ -72,7 +81,7 @@ export default {
     })
 
     const updateRowHeight = () => {
-      rowHeight.value = window.innerWidth <= 900 ? 76 : 56
+      rowHeight.value = window.innerWidth <= 900 ? 92 : 56
     }
 
     onMounted(() => {
@@ -189,6 +198,7 @@ export default {
       rowHeight,
       debugInfo,
       sortPropForBox,
+      dateForItem,
       fmtDate,
       corrFor,
       virtualizer,
@@ -211,27 +221,54 @@ export default {
 
 <template>
   <section class="list">
-    <div class="viewbar">
+    <div class="list-header">
+      <div class="folder-title">
+        <span class="folder-name">{{ currentMailboxName || 'Mailbox' }}</span>
+        <span class="folder-count">{{ totalCount ?? '…' }}</span>
+      </div>
+      <div class="folder-actions">
+        <button class="icon-btn" title="Previous" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6"/></svg>
+        </button>
+        <button class="icon-btn" title="Next" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="list-topbar">
+      <div class="searchbar">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M15.5 14h-.8l-.3-.3a6.5 6.5 0 10-.7.7l.3.3v.8l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 110-9 4.5 4.5 0 010 9z"/>
+        </svg>
+        <input id="q" type="search" v-model.trim="filterText" placeholder="Search messages">
+        <button v-if="filterText" class="clear-filter" @click="clearFilter" title="Clear filter">×</button>
+      </div>
+      <div class="list-toolbar">
+        <button class="icon-btn" title="Archive" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 7H3.5l1.2 12.5h14.6L20.5 7zm-3.8 4.5H7.3v-2h9.4v2zM20 5H4l-1-3h18l-1 3z"/></svg>
+        </button>
+        <button class="icon-btn" title="Delete" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 7h12l-1 13H7L6 7zm4-3h4l1 2H9l1-2z"/></svg>
+        </button>
+        <button class="icon-btn" title="Mark read" type="button">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 8l-8 5-8-5V6l8 5 8-5v2zm0 3l-8 5-8-5v7h16v-7z"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="list-filters">
       <div class="seg">
         <button id="viewAll" :class="{ active: viewMode === 'all' }" @click="$emit('set-view', 'all')">
-          All Mail
+          All
+        </button>
+        <button id="viewRead" :class="{ active: viewMode === 'read' }" @click="$emit('set-view', 'read')">
+          Read
         </button>
         <button id="viewUnread" :class="{ active: viewMode === 'unread' }" @click="$emit('set-view', 'unread')">
           Unread
         </button>
       </div>
-    </div>
-
-    <div class="countbar">
-      <div id="folderTotal" class="strong">Total Messages: {{ totalCount ?? '…' }}</div>
-    </div>
-
-    <div class="filterbar">
-      <label for="q">Quick Filter</label>
-      <div class="filter-input-container">
-        <input id="q" type="search" v-model.trim="filterText" placeholder="Subject or From…">
-        <button v-if="filterText" class="clear-filter" @click="clearFilter" title="Clear filter">×</button>
-      </div>
+      <div id="folderTotal" class="count">{{ totalCount ?? '…' }} messages</div>
     </div>
 
     <!-- Virtualization debug info -->
@@ -262,8 +299,7 @@ export default {
               <div class="snippet">{{ (items[v.index].preview || '').trim() }}</div>
             </div>
             <div class="date">
-              <span>{{ fmtDate(sortPropForBox(currentMailboxId) === 'sentAt' ? items[v.index].sentAt :
-                items[v.index].receivedAt) }}</span>
+              <span>{{ fmtDate(dateForItem(items[v.index])) }}</span>
             </div>
           </div>
           <div v-else class="rowitem"></div>
@@ -287,6 +323,40 @@ export default {
   --colspec: 40px 220px 1fr 140px;
 }
 
+.list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.folder-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.folder-name {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.folder-count {
+  background: var(--accent);
+  color: #fff;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+}
+
+.folder-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 #rows {
   overflow-y: auto;
   overflow-x: hidden;
@@ -299,30 +369,99 @@ export default {
   height: 56px;
 }
 
-.viewbar {
+.list-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.searchbar {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  background: var(--panel2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 6px 10px;
+  flex: 1 1 auto;
+}
+
+.searchbar svg {
+  width: 16px;
+  height: 16px;
+  fill: var(--muted);
+}
+
+.searchbar input {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  width: 100%;
+  outline: none;
+  font-size: 13px;
+}
+
+.searchbar input::placeholder {
+  color: var(--muted);
+}
+
+.list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.icon-btn {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+}
+
+.icon-btn svg {
+  fill: currentColor;
+}
+
+.icon-btn svg {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.list-filters {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--border);
+  background: var(--panel2);
 }
 
 .seg {
   display: inline-flex;
-  background: var(--panel);
+  background: var(--panel2);
   border: 1px solid var(--border);
-  border-radius: .6rem;
+  border-radius: 999px;
   padding: 2px;
 }
 
 .seg button {
   background: transparent;
   border: 0;
-  padding: .4rem .7rem;
+  padding: .35rem .75rem;
   color: var(--muted);
   cursor: pointer;
-  border-radius: .45rem;
+  border-radius: 999px;
   font-weight: 600;
+  font-size: 12px;
 }
 
 .seg button.active {
@@ -330,88 +469,20 @@ export default {
   color: #fff;
 }
 
-.countbar {
-  display: flex;
-  gap: .6rem;
-  align-items: center;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
+.count {
   color: var(--muted);
   font-size: 12px;
-}
-
-.countbar .strong {
-  color: var(--text);
-  font-weight: 600;
-}
-
-.filterbar {
-  display: grid;
-  grid-template-columns: 110px 1fr;
-  gap: 8px;
-  align-items: center;
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--border);
-}
-
-.filterbar label {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.filter-input-container {
-  position: relative;
-  display: inline-block;
-  width: 33%;
-  /* Make it 1/3 the width */
-  max-width: 300px;
-}
-
-.filterbar input {
-  width: 100%;
-  padding: .5rem .65rem;
-  padding-right: 2rem;
-  /* Make room for clear button */
-  border: 1px solid var(--border);
-  border-radius: .5rem;
-  background: var(--panel);
-  color: var(--text);
-  outline: none;
 }
 
 .clear-filter {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
   background: none;
   border: none;
   font-size: 18px;
   line-height: 1;
-  color: var(--muted);
+  color: #8b93a7;
   cursor: pointer;
-  padding: 2px 4px;
-  border-radius: 2px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
 }
 
-.clear-filter:hover {
-  background: var(--border);
-  color: var(--text);
-}
-
-.filterbar input::placeholder {
-  color: #9aa3b2;
-}
-
-.filterbar input:-webkit-autofill {
-  -webkit-box-shadow: 0 0 0px 1000px var(--panel) inset;
-  -webkit-text-fill-color: var(--text);
-}
 
 #rows .cols {
   position: sticky;
@@ -463,6 +534,11 @@ export default {
   font-weight: 400;
 }
 
+.rowitem .line {
+  min-width: 0;
+  overflow: hidden;
+}
+
 .rowitem.unread .who,
 .rowitem.unread .subject {
   font-weight: 700;
@@ -498,9 +574,9 @@ export default {
 
   .rowitem {
     grid-template-columns: var(--colspec);
-    row-gap: 2px;
-    padding-left: 14px;
-    height: 76px;
+    row-gap: 4px;
+    padding: 8px 12px 8px 14px;
+    height: 92px;
   }
 
   .rowitem .line {
@@ -515,7 +591,12 @@ export default {
   }
 
   .rowitem .date {
-    display: none;
+    display: block !important;
+    grid-column: 2 / -1;
+    justify-self: end;
+    text-align: right;
+    font-size: 11px;
+    color: var(--muted);
   }
 
   .rowitem .who {
@@ -531,6 +612,12 @@ export default {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .rowitem .who,
+  .rowitem .subject,
+  .rowitem .snippet {
+    line-height: 1.25;
   }
 
   .filterbar {

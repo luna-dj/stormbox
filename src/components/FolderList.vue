@@ -1,5 +1,5 @@
 <script>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 
 export default {
   name: 'FolderList',
@@ -8,9 +8,16 @@ export default {
       type: Array,
       default: () => []
     },
-    currentMailboxId: String
+    currentMailboxId: String,
+    accounts: {
+      type: Array,
+      default: () => []
+    },
+    activeAccountId: String,
+    profileName: String,
+    profileEmail: String
   },
-  emits: ['compose', 'reload', 'switch-mailbox'],
+  emits: ['compose', 'reload', 'switch-mailbox', 'set-account', 'add-account', 'logout'],
   setup(props) {
     const displayName = (m) => {
       const role = (m.role || "").toLowerCase(), mailboxName = (m.name || "").toLowerCase();
@@ -44,11 +51,56 @@ export default {
       return props.mailboxes.filter(m => !picked.has(m.id) && (m.role || "") !== "outbox").slice().sort(byName);
     })
 
+    const showQuickMenu = ref(false)
+    const showAccountMenu = ref(false)
+
+    const toggleQuickMenu = () => {
+      showQuickMenu.value = !showQuickMenu.value
+      if (showQuickMenu.value) showAccountMenu.value = false
+    }
+
+    const toggleAccountMenu = () => {
+      showAccountMenu.value = !showAccountMenu.value
+      if (showAccountMenu.value) showQuickMenu.value = false
+    }
+
+    const closeMenus = () => {
+      showQuickMenu.value = false
+      showAccountMenu.value = false
+    }
+
+    onMounted(() => {
+      document.addEventListener('click', closeMenus)
+    })
+
+    onBeforeUnmount(() => {
+      document.removeEventListener('click', closeMenus)
+    })
+
+    const findMailboxId = (role, names) => {
+      const byRole = props.mailboxes.find(x => (x.role || "").toLowerCase() === role)
+      if (byRole) return byRole.id
+      const byName = props.mailboxes.find(x => names.includes((x.name || "").toLowerCase()))
+      return byName ? byName.id : null
+    }
+
+    const viewMailboxIds = computed(() => ({
+      inbox: findMailboxId("inbox", ["inbox"]),
+      drafts: findMailboxId("drafts", ["drafts"]),
+      sent: findMailboxId("sent", ["sent", "sent items"])
+    }))
+
     return {
       displayName,
       unreadBadge,
       orderedTop,
-      orderedOther
+      orderedOther,
+      viewMailboxIds,
+      showQuickMenu,
+      showAccountMenu,
+      toggleQuickMenu,
+      toggleAccountMenu,
+      closeMenus
     }
   }
 }
@@ -56,16 +108,80 @@ export default {
 
 <template>
   <aside class="folders">
+    <div class="profile">
+      <div class="avatar">{{ (profileName || profileEmail || 'ME').slice(0, 2).toUpperCase() }}</div>
+      <div class="profile-text">
+        <div class="profile-name">{{ profileName || 'Account' }}</div>
+        <div class="profile-sub">Thundermail</div>
+      </div>
+      <div class="profile-actions">
+        <button class="icon-btn" title="Quick actions" @click.stop="toggleQuickMenu">⋯</button>
+        <button class="icon-btn" title="Accounts" @click.stop="toggleAccountMenu">☰</button>
+
+        <div v-if="showQuickMenu" class="menu" @click.stop>
+          <button class="menu-item" @click="closeMenus(); $emit('compose')">New message</button>
+          <button class="menu-item" @click="closeMenus(); $emit('reload')">Reload</button>
+          <div class="menu-divider"></div>
+          <button class="menu-item" @click="closeMenus(); $emit('logout')">Logout</button>
+        </div>
+
+        <div v-if="showAccountMenu" class="menu" @click.stop>
+          <div class="menu-title">Accounts</div>
+          <button
+            v-for="account in accounts"
+            :key="account.id"
+            class="menu-item"
+            :class="{ active: account.id === activeAccountId }"
+            @click="closeMenus(); $emit('set-account', account.id)"
+          >
+            <span class="menu-main">{{ account.label || account.email || account.id }}</span>
+            <span class="menu-sub">{{ account.email || account.id }}</span>
+          </button>
+          <div v-if="!accounts.length" class="menu-empty">No accounts added</div>
+          <div class="menu-divider"></div>
+          <button class="menu-item" @click="closeMenus(); $emit('add-account')">Add account…</button>
+        </div>
+      </div>
+    </div>
+
     <div class="ftools">
-      <button id="composeBtn" title="Compose" @click="$emit('compose')">
+      <button id="composeBtn" title="New message" @click="$emit('compose')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
           stroke-linejoin="round" aria-hidden="true">
           <path d="M12 20h9" />
           <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
         </svg>
-        <span>Compose</span>
+        <span>New message</span>
       </button>
       <button id="reload" title="Reload" @click="$emit('reload')">Reload</button>
+    </div>
+
+    <div class="section-label">Views</div>
+    <div class="view-list">
+      <button
+        class="view-item"
+        :class="{ active: currentMailboxId === viewMailboxIds.inbox }"
+        :disabled="!viewMailboxIds.inbox"
+        @click="viewMailboxIds.inbox && $emit('switch-mailbox', viewMailboxIds.inbox)"
+      >
+        Inbox
+      </button>
+      <button
+        class="view-item"
+        :class="{ active: currentMailboxId === viewMailboxIds.drafts }"
+        :disabled="!viewMailboxIds.drafts"
+        @click="viewMailboxIds.drafts && $emit('switch-mailbox', viewMailboxIds.drafts)"
+      >
+        Drafts
+      </button>
+      <button
+        class="view-item"
+        :class="{ active: currentMailboxId === viewMailboxIds.sent }"
+        :disabled="!viewMailboxIds.sent"
+        @click="viewMailboxIds.sent && $emit('switch-mailbox', viewMailboxIds.sent)"
+      >
+        Sent
+      </button>
     </div>
 
     <div class="fscroll">
@@ -95,9 +211,159 @@ export default {
 .folders {
   border-right: 1px solid var(--border);
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto auto auto 1fr;
   background: var(--panel2);
   min-height: 0;
+}
+
+.profile {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px 12px 4px;
+}
+
+.avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.profile-text {
+  min-width: 0;
+}
+
+.profile-name {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.profile-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.profile-actions {
+  display: flex;
+  gap: 6px;
+  position: relative;
+}
+
+.profile .icon-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel2);
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: 36px;
+  min-width: 200px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.35);
+  padding: 6px;
+  display: grid;
+  gap: 4px;
+  z-index: 10;
+}
+
+.menu-title {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 4px 6px 2px;
+}
+
+.menu-item {
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  gap: 2px;
+}
+
+.menu-item:hover,
+.menu-item.active {
+  background: var(--rowHover);
+}
+
+.menu-item.active {
+  font-weight: 600;
+}
+
+.menu-main {
+  font-size: 13px;
+}
+
+.menu-sub {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.menu-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.menu-empty {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 8px 10px;
+}
+
+.section-label {
+  padding: 10px 12px 6px;
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.view-list {
+  display: grid;
+  gap: 6px;
+  padding: 0 10px 10px;
+}
+
+.view-item {
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+  font-size: 13px;
+}
+
+.view-item.active {
+  background: var(--rowActive);
+  color: var(--text);
+  border-color: var(--accent);
 }
 
 .ftools {
@@ -108,7 +374,7 @@ export default {
 }
 
 .ftools button {
-  padding: .55rem .9rem;
+  padding: .6rem .9rem;
   border: 0;
   border-radius: .6rem;
   background: var(--accent);
@@ -117,6 +383,8 @@ export default {
   display: inline-flex;
   align-items: center;
   gap: .45rem;
+  width: 100%;
+  justify-content: center;
 }
 
 .ftools button:hover {
@@ -154,6 +422,7 @@ export default {
   padding: 8px 10px;
   border-radius: .5rem;
   cursor: pointer;
+  color: var(--text);
 }
 
 .mbox:hover {
@@ -162,6 +431,7 @@ export default {
 
 .mbox.active {
   background: var(--rowActive);
+  color: var(--text);
 }
 
 .mbox .name {
@@ -186,15 +456,11 @@ export default {
   color: var(--text);
 }
 
+
 @media (max-width: 900px) {
   .folders {
     border-right: 0;
     border-bottom: 1px solid var(--border);
-    max-height: 220px;
-  }
-
-  .fscroll {
-    max-height: 220px;
   }
 }
 </style>

@@ -214,8 +214,15 @@ export default {
 
 <template>
   <div class="detail">
+    <div v-if="!detail.id" class="empty-detail">
+      <div class="empty-card">
+        <div class="empty-icon">📥</div>
+        <div class="empty-title">Welcome back</div>
+        <div class="empty-subtitle">Select a message to read it here.</div>
+      </div>
+    </div>
     <!-- Read panel -->
-    <div class="head">
+    <div class="head" v-else>
       <div class="detailbar">
         <button id="backToList" class="btn-ghost backbtn" title="Back" @click="$emit('back-to-list')">
           ←
@@ -304,7 +311,7 @@ export default {
     </div>
 
     <!-- Email body (sanitized HTML or text) -->
-    <div class="preview" id="d-preview" v-html="safeBody" v-if="!showHeaders && !showRawMessage"></div>
+    <div class="preview" id="d-preview" v-html="safeBody" v-if="!showHeaders && !showRawMessage && detail.id"></div>
 
     <div id="attachments" class="attachments" :class="{ visible: attachments.length }">
       <div class="atitle">Attachments</div>
@@ -334,7 +341,7 @@ export default {
 .detail {
   display: grid;
   grid-template-rows: auto auto 1fr auto;
-  background: var(--panel);
+  background: var(--panel2);
   min-height: 0;
   height: 100%;
   overflow: hidden;
@@ -347,13 +354,13 @@ export default {
 .head {
   padding: 14px 16px;
   border-bottom: 1px solid var(--border);
-  max-height: 32vh;
+  max-height: 34vh;
   overflow: auto;
+  background: var(--panel);
 }
 
 .detailbar {
-  display: grid;
-  grid-template-columns: auto auto 1fr;
+  display: flex;
   align-items: center;
   gap: .6rem;
 }
@@ -369,14 +376,14 @@ export default {
   padding: .35rem .6rem;
   border: 1px solid var(--border);
   border-radius: .6rem;
-  background: transparent;
-  color: #9aa3b2;
+  background: var(--panel2);
+  color: var(--muted);
   cursor: pointer;
 }
 
 .btn-ghost:hover {
-  background: #14182a;
-  color: #e6e8ef;
+  background: var(--rowHover);
+  color: var(--text);
 }
 
 .btn-ghost.active {
@@ -419,7 +426,7 @@ export default {
 
 .grid {
   display: grid;
-  grid-template-columns: 100px 1fr;
+  grid-template-columns: 70px 1fr;
   row-gap: 6px;
   column-gap: 10px;
   color: var(--muted);
@@ -433,21 +440,20 @@ export default {
 
 /* Email HTML/text viewer */
 .preview {
-  padding: 14px 16px;
+  padding: 16px 18px;
   overflow-y: scroll;
   overflow-x: hidden;
   min-height: 0;
   max-height: 100%;
   scrollbar-gutter: stable both-edges;
   white-space: normal;
-  color: #e6e8ef; /* Light text for dark mode */
+  color: var(--message-body-text);
   word-break: break-word;
   overscroll-behavior: contain;
-  /* Custom scrollbar for Webkit browsers */
-  scrollbar-width: auto; /* Firefox */
-  scrollbar-color: #c6cedb #0c0f16; /* Firefox: thumb track */
-  /* Ensure scrollbar is always visible when content overflows */
-  scrollbar-gutter: stable;
+  background: var(--message-body-bg);
+  border-left: 1px solid var(--border);
+  scrollbar-width: auto;
+  scrollbar-color: var(--message-body-thumb) var(--message-body-track);
 }
 
 .preview::-webkit-scrollbar {
@@ -455,60 +461,21 @@ export default {
 }
 
 .preview::-webkit-scrollbar-track {
-  background: #11131a; /* Darker track for contrast */
-  border-left: 1px solid #1e2230; /* Add a border for separation */
+  background: var(--message-body-track);
+  border-left: 1px solid var(--border);
 }
 
 .preview::-webkit-scrollbar-thumb {
-  background: #9aa3b2; /* Light gray thumb */
-  border-radius: 7px; /* Half of width for rounded ends */
-  border: 3px solid #11131a; /* Padding around thumb */
+  background: var(--message-body-thumb);
+  border-radius: 7px;
+  border: 3px solid var(--message-body-track);
 }
 
 .preview::-webkit-scrollbar-thumb:hover {
-  background: #b0b8c5; /* Lighter on hover */
+  background: var(--message-body-thumb);
 }
 
-/* Light theme overrides for scrollbar */
-:root[data-theme="light"] .preview::-webkit-scrollbar-track,
-@media (prefers-color-scheme: light) {
-  :root .preview::-webkit-scrollbar-track {
-    background: #f4f7fb; /* Light track */
-    border-left-color: #dbe1ea;
-  }
-}
-
-:root[data-theme="light"] .preview::-webkit-scrollbar-thumb,
-@media (prefers-color-scheme: light) {
-  :root .preview::-webkit-scrollbar-thumb {
-    background: #9ca3af; /* Darker thumb */
-    border-color: #f4f7fb;
-  }
-}
-
-:root[data-theme="light"] .preview::-webkit-scrollbar-thumb:hover,
-@media (prefers-color-scheme: light) {
-  :root .preview::-webkit-scrollbar-thumb:hover {
-    background: #6b7280; /* Darker on hover */
-  }
-}
-
-:root[data-theme="light"] .preview {
-  scrollbar-color: #9ca3af #f4f7fb; /* Firefox light theme */
-}
-
-/* Light mode: dark text for email preview */
-:root[data-theme="light"] .preview,
-[data-theme="light"] .preview {
-  color: #111827; /* Dark text for light mode */
-}
-
-/* System light mode preference */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .preview {
-    color: #111827; /* Dark text for light mode */
-  }
-}
+/* Keep email content dark on white */
 
 /* Ensure HTML email content respects theme colors */
 .preview p,
@@ -520,21 +487,43 @@ export default {
   color: inherit;
 }
 
-/* Dark mode: force light text for HTML emails */
 .preview * {
-  color: #e6e8ef !important;
+  color: inherit !important;
 }
 
-/* Light mode: force dark text for HTML emails */
-:root[data-theme="light"] .preview *,
-[data-theme="light"] .preview * {
-  color: #111827 !important;
+.empty-detail {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--panel2);
 }
 
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .preview * {
-    color: #111827 !important;
-  }
+.empty-card {
+  text-align: center;
+  color: var(--muted);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  padding: 32px 36px;
+  border-radius: 16px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+}
+
+.empty-icon {
+  font-size: 40px;
+  margin-bottom: 10px;
+}
+
+.empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+
+.empty-subtitle {
+  font-size: 13px;
+  color: var(--muted);
 }
 
 /* Preserve link colors but ensure visibility */
@@ -570,7 +559,7 @@ export default {
   overflow-x: hidden;
   /* Custom scrollbar for quoted content */
   scrollbar-width: thin; /* Firefox */
-  scrollbar-color: #9aa3b2 #1e2230; /* Firefox: thumb track */
+  scrollbar-color: var(--message-body-thumb) var(--message-body-track);
   position: relative; /* Ensure scrollbar positioning */
 }
 
@@ -590,7 +579,7 @@ export default {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: #9aa3b2 #1e2230;
+  scrollbar-color: var(--message-body-thumb) var(--message-body-track);
   padding: 8px;
   margin: 8px 0;
 }
@@ -601,7 +590,7 @@ export default {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: #9aa3b2 #1e2230;
+  scrollbar-color: var(--message-body-thumb) var(--message-body-track);
   padding: 8px 12px;
   margin: 8px 0;
   border-left: 3px solid var(--border);
@@ -613,38 +602,18 @@ export default {
 }
 
 .preview .quoted-content-scrollable::-webkit-scrollbar-track {
-  background: #1e2230;
-  border-left: 1px solid #2a2f3f;
+  background: var(--message-body-track);
+  border-left: 1px solid var(--border);
 }
 
 .preview .quoted-content-scrollable::-webkit-scrollbar-thumb {
-  background: #9aa3b2;
+  background: var(--message-body-thumb);
   border-radius: 7px;
-  border: 3px solid #1e2230;
+  border: 3px solid var(--message-body-track);
 }
 
 .preview .quoted-content-scrollable::-webkit-scrollbar-thumb:hover {
-  background: #b0b8c5;
-}
-
-/* Light theme for quoted-content-scrollable */
-:root[data-theme="light"] .preview .quoted-content-scrollable {
-  scrollbar-color: #9ca3af #dbe1ea;
-  border-left-color: #dbe1ea;
-}
-
-:root[data-theme="light"] .preview .quoted-content-scrollable::-webkit-scrollbar-track {
-  background: #f4f7fb;
-  border-left-color: #dbe1ea;
-}
-
-:root[data-theme="light"] .preview .quoted-content-scrollable::-webkit-scrollbar-thumb {
-  background: #9ca3af;
-  border-color: #f4f7fb;
-}
-
-:root[data-theme="light"] .preview .quoted-content-scrollable::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
+  background: var(--message-body-thumb);
 }
 
 /* Also style any container that might wrap quoted text */
@@ -654,7 +623,7 @@ export default {
   overflow-y: auto;
   overflow-x: hidden;
   scrollbar-width: thin;
-  scrollbar-color: #9aa3b2 #1e2230;
+  scrollbar-color: var(--message-body-thumb) var(--message-body-track);
 }
 
 .preview blockquote::-webkit-scrollbar,
@@ -674,8 +643,8 @@ export default {
 .preview pre::-webkit-scrollbar-track,
 .preview div:has(> pre)::-webkit-scrollbar-track,
 .preview div:has(> blockquote)::-webkit-scrollbar-track {
-  background: #1e2230;
-  border-left: 1px solid #2a2f3f;
+  background: var(--message-body-track);
+  border-left: 1px solid var(--border);
 }
 
 .preview blockquote::-webkit-scrollbar-thumb,
@@ -685,9 +654,9 @@ export default {
 .preview pre::-webkit-scrollbar-thumb,
 .preview div:has(> pre)::-webkit-scrollbar-thumb,
 .preview div:has(> blockquote)::-webkit-scrollbar-thumb {
-  background: #9aa3b2;
+  background: var(--message-body-thumb);
   border-radius: 7px;
-  border: 3px solid #1e2230;
+  border: 3px solid var(--message-body-track);
 }
 
 .preview blockquote::-webkit-scrollbar-thumb:hover,
@@ -697,70 +666,7 @@ export default {
 .preview pre::-webkit-scrollbar-thumb:hover,
 .preview div:has(> pre)::-webkit-scrollbar-thumb:hover,
 .preview div:has(> blockquote)::-webkit-scrollbar-thumb:hover {
-  background: #b0b8c5;
-}
-
-/* Light theme overrides for quoted content scrollbar */
-:root[data-theme="light"] .preview blockquote,
-:root[data-theme="light"] .preview div[style*="border-left"],
-:root[data-theme="light"] .preview .gmail_quote,
-:root[data-theme="light"] .preview [class*="quote"] {
-  scrollbar-color: #9ca3af #dbe1ea; /* Firefox light theme */
-}
-
-:root[data-theme="light"] .preview blockquote::-webkit-scrollbar-track,
-:root[data-theme="light"] .preview div[style*="border-left"]::-webkit-scrollbar-track,
-:root[data-theme="light"] .preview .gmail_quote::-webkit-scrollbar-track,
-:root[data-theme="light"] .preview [class*="quote"]::-webkit-scrollbar-track {
-  background: #f4f7fb;
-  border-left-color: #dbe1ea;
-}
-
-:root[data-theme="light"] .preview blockquote::-webkit-scrollbar-thumb,
-:root[data-theme="light"] .preview div[style*="border-left"]::-webkit-scrollbar-thumb,
-:root[data-theme="light"] .preview .gmail_quote::-webkit-scrollbar-thumb,
-:root[data-theme="light"] .preview [class*="quote"]::-webkit-scrollbar-thumb {
-  background: #9ca3af;
-  border-color: #f4f7fb;
-}
-
-:root[data-theme="light"] .preview blockquote::-webkit-scrollbar-thumb:hover,
-:root[data-theme="light"] .preview div[style*="border-left"]::-webkit-scrollbar-thumb:hover,
-:root[data-theme="light"] .preview .gmail_quote::-webkit-scrollbar-thumb:hover,
-:root[data-theme="light"] .preview [class*="quote"]::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .preview blockquote,
-  :root:not([data-theme="dark"]) .preview div[style*="border-left"],
-  :root:not([data-theme="dark"]) .preview .gmail_quote,
-  :root:not([data-theme="dark"]) .preview [class*="quote"] {
-    scrollbar-color: #9ca3af #dbe1ea;
-  }
-  
-  :root:not([data-theme="dark"]) .preview blockquote::-webkit-scrollbar-track,
-  :root:not([data-theme="dark"]) .preview div[style*="border-left"]::-webkit-scrollbar-track,
-  :root:not([data-theme="dark"]) .preview .gmail_quote::-webkit-scrollbar-track,
-  :root:not([data-theme="dark"]) .preview [class*="quote"]::-webkit-scrollbar-track {
-    background: #f4f7fb;
-    border-left-color: #dbe1ea;
-  }
-  
-  :root:not([data-theme="dark"]) .preview blockquote::-webkit-scrollbar-thumb,
-  :root:not([data-theme="dark"]) .preview div[style*="border-left"]::-webkit-scrollbar-thumb,
-  :root:not([data-theme="dark"]) .preview .gmail_quote::-webkit-scrollbar-thumb,
-  :root:not([data-theme="dark"]) .preview [class*="quote"]::-webkit-scrollbar-thumb {
-    background: #9ca3af;
-    border-color: #f4f7fb;
-  }
-  
-  :root:not([data-theme="dark"]) .preview blockquote::-webkit-scrollbar-thumb:hover,
-  :root:not([data-theme="dark"]) .preview div[style*="border-left"]::-webkit-scrollbar-thumb:hover,
-  :root:not([data-theme="dark"]) .preview .gmail_quote::-webkit-scrollbar-thumb:hover,
-  :root:not([data-theme="dark"]) .preview [class*="quote"]::-webkit-scrollbar-thumb:hover {
-    background: #6b7280;
-  }
+  background: var(--message-body-thumb);
 }
 
 /* Attachments */
@@ -792,7 +698,7 @@ export default {
   align-items: center;
   justify-content: space-between;
   border: 1px solid var(--border);
-  background: #0e1220;
+  background: var(--panel);
   border-radius: .5rem;
   padding: 8px 10px;
 }
@@ -861,25 +767,9 @@ export default {
   font-family: 'Courier New', 'Monaco', 'Consolas', monospace;
   font-size: 14px;
   line-height: 1.8;
-  color: #e6e8ef; /* Light text for dark mode */
+  color: var(--text);
   overflow-x: auto;
   max-width: 100%;
-}
-
-/* Light mode: dark text */
-:root[data-theme="light"] .headers-content,
-:root[data-theme="light"] .raw-message-content,
-[data-theme="light"] .headers-content,
-[data-theme="light"] .raw-message-content {
-  color: #111827; /* Dark text for light mode */
-}
-
-/* System light mode preference */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .headers-content,
-  :root:not([data-theme="dark"]) .raw-message-content {
-    color: #111827; /* Dark text for light mode */
-  }
 }
 
 .btn-ghost.active {

@@ -2,7 +2,11 @@ import { ref, reactive, computed, onMounted, watch } from "vue";
 import { useInfiniteQuery, useQueryClient } from "@tanstack/vue-query";
 import { JMAPClient } from "../services/jmap.js";
 
-export function useEmailStore() {
+export function useEmailStore(options = {}) {
+  const instanceKey =
+    options.sessionKey ||
+    `session-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const sessionKey = ref(instanceKey);
   // Connection state
   const connected = ref(false);
   const status = ref("Not connected.");
@@ -83,6 +87,7 @@ export function useEmailStore() {
     }
 
     if (viewMode.value === "unread") arr = arr.filter((m) => !m.isSeen);
+    if (viewMode.value === "read") arr = arr.filter((m) => m.isSeen);
 
     if (filterText.value) {
       const ft = filterText.value.toLowerCase();
@@ -294,7 +299,12 @@ export function useEmailStore() {
 
   // Vue Query: infinite list per mailbox
   const queryClient = useQueryClient();
-  const emailListKey = (boxId, sortProp) => ["emails", boxId, sortProp];
+  const emailListKey = (boxId, sortProp) => [
+    "emails",
+    sessionKey.value,
+    boxId,
+    sortProp,
+  ];
 
   const mailboxInfinite = useInfiniteQuery({
     queryKey: computed(() =>
@@ -545,11 +555,10 @@ export function useEmailStore() {
         mb.unreadEmails--;
 
       // Optimistically update the Vue Query cache
-      const queryKey = [
-        "emails",
+      const queryKey = emailListKey(
         currentMailboxId.value,
-        sortPropForBox(currentBox.value),
-      ];
+        sortPropForBox(currentBox.value)
+      );
       queryClient.setQueryData(queryKey, (oldData) => {
         if (!oldData) return oldData;
         return {
@@ -761,11 +770,10 @@ export function useEmailStore() {
       const wasUnread = !m.isSeen;
 
       // Optimistically update the Vue Query cache
-      const queryKey = [
-        "emails",
+      const queryKey = emailListKey(
         currentMailboxId.value,
-        sortPropForBox(currentBox.value),
-      ];
+        sortPropForBox(currentBox.value)
+      );
       queryClient.setQueryData(queryKey, (oldData) => {
         if (!oldData) return oldData;
         return {
@@ -798,11 +806,10 @@ export function useEmailStore() {
       error.value = "Delete failed: " + e.message;
       // On error, revert the optimistic update
       await queryClient.invalidateQueries({
-        queryKey: [
-          "emails",
+        queryKey: emailListKey(
           currentMailboxId.value,
-          sortPropForBox(currentBox.value),
-        ],
+          sortPropForBox(currentBox.value)
+        ),
       });
     }
   };
@@ -818,11 +825,10 @@ export function useEmailStore() {
       );
 
       // Optimistically update the Vue Query cache - remove from current mailbox
-      const queryKey = [
-        "emails",
+      const queryKey = emailListKey(
         currentMailboxId.value,
-        sortPropForBox(currentBox.value),
-      ];
+        sortPropForBox(currentBox.value)
+      );
       queryClient.setQueryData(queryKey, (oldData) => {
         if (!oldData) return oldData;
         return {
