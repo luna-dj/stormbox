@@ -1,5 +1,5 @@
 <script>
-import { computed, provide, ref, reactive, watch, unref, nextTick } from 'vue'
+import { computed, provide, ref, reactive, watch, unref, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useTheme } from './composables/useTheme.js'
 import { useOffline } from './composables/useOffline.js'
 import LoginForm from './components/LoginForm.vue'
@@ -502,6 +502,82 @@ export default {
         addAccountOpen.value = false
       }
     }, { immediate: true })
+
+    // Browser history management for mobile back button
+    let isHandlingPopState = false
+    
+    const handlePopState = (event) => {
+      isHandlingPopState = true
+      const url = new URL(window.location)
+      const emailId = url.searchParams.get('email')
+      
+      if (emailId && activeEmailStore.value) {
+        // Navigate to email
+        activeEmailStore.value.selectMessage?.(emailId)
+      } else {
+        // Navigate back to list
+        if (activeEmailStore.value?.selectedEmailId) {
+          if (typeof activeEmailStore.value.selectedEmailId === 'object' && 'value' in activeEmailStore.value.selectedEmailId) {
+            activeEmailStore.value.selectedEmailId.value = null
+          } else if (activeEmailStore.value.backToList) {
+            activeEmailStore.value.backToList()
+          }
+        }
+      }
+      
+      nextTick(() => {
+        isHandlingPopState = false
+      })
+    }
+    
+    // Watch selectedEmailId and update history
+    watch(selectedEmailId, (emailId, oldEmailId) => {
+      if (isHandlingPopState) return
+      
+      if (window.history && window.location) {
+        const url = new URL(window.location)
+        const currentEmailId = url.searchParams.get('email')
+        
+        if (emailId) {
+          // Only push if different from current URL
+          if (currentEmailId !== emailId) {
+            url.searchParams.set('email', emailId)
+            window.history.pushState({ emailId, view: currentView.value }, '', url)
+          }
+        } else {
+          // Only push if email was in URL
+          if (currentEmailId) {
+            url.searchParams.delete('email')
+            window.history.pushState({ view: currentView.value }, '', url)
+          }
+        }
+      }
+    })
+    
+    // Initialize from URL on mount
+    onMounted(() => {
+      // Set initial history state
+      if (window.history && !window.history.state) {
+        const url = new URL(window.location)
+        window.history.replaceState({ view: currentView.value }, '', url)
+      }
+      
+      // Listen for back/forward button
+      window.addEventListener('popstate', handlePopState)
+      
+      // Check URL for email ID on mount
+      const url = new URL(window.location)
+      const emailId = url.searchParams.get('email')
+      if (emailId && activeEmailStore.value) {
+        nextTick(() => {
+          activeEmailStore.value.selectMessage?.(emailId)
+        })
+      }
+    })
+    
+    onBeforeUnmount(() => {
+      window.removeEventListener('popstate', handlePopState)
+    })
 
     return {
       accounts,
