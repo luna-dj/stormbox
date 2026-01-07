@@ -22,6 +22,19 @@ export default {
   setup(props, { emit }) {
     const showAutocomplete = ref(false)
     const toInputRef = ref(null)
+    const isMobile = ref(window.innerWidth <= 900)
+    
+    const handleWindowResize = () => {
+      isMobile.value = window.innerWidth <= 900
+    }
+    
+    onMounted(() => {
+      window.addEventListener('resize', handleWindowResize)
+    })
+    
+    onBeforeUnmount(() => {
+      window.removeEventListener('resize', handleWindowResize)
+    })
     
     const currentQuery = computed(() => {
       if (!props.compose.to) return ''
@@ -506,6 +519,7 @@ export default {
       hideAutocomplete,
       isFullscreen,
       composeRef,
+      isMobile,
       composeStyle,
       toggleFullscreen,
       startResize,
@@ -1232,6 +1246,79 @@ export default {
 
 .compose :deep(.ql-snow .ql-picker.ql-expanded .ql-picker-label) {
   color: var(--text) !important;
+}
+
+/* Mobile simplifications */
+@media (max-width: 900px) {
+  /* Hide signature section on mobile */
+  .signature-field {
+    display: none;
+  }
+  
+  /* Hide complex toolbar items on mobile - only show bold, italic, and bullet list */
+  .compose-body #c-editor :deep(.ql-toolbar .ql-picker.ql-header),
+  .compose-body #c-editor :deep(.ql-toolbar .ql-underline),
+  .compose-body #c-editor :deep(.ql-toolbar .ql-list[value="ordered"]),
+  .compose-body #c-editor :deep(.ql-toolbar .ql-link),
+  .compose-body #c-editor :deep(.ql-toolbar .ql-blockquote),
+  .compose-body #c-editor :deep(.ql-toolbar .ql-code-block),
+  .compose-body #c-editor :deep(.ql-toolbar .ql-clean) {
+    display: none !important;
+  }
+  
+  /* Simplify toolbar - larger buttons, less spacing */
+  .compose-body #c-editor :deep(.ql-toolbar) {
+    padding: 8px;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  
+  .compose-body #c-editor :deep(.ql-toolbar button),
+  .compose-body #c-editor :deep(.ql-toolbar .ql-picker) {
+    width: 44px;
+    height: 44px;
+    padding: 10px;
+  }
+  
+  .compose-body #c-editor :deep(.ql-toolbar .ql-formats) {
+    margin-right: 4px;
+    padding-right: 4px;
+    gap: 6px;
+  }
+  
+  /* Larger editor text on mobile */
+  .compose-body #c-editor :deep(.ql-editor) {
+    font-size: 16px;
+    padding: 12px;
+    min-height: 200px;
+  }
+  
+  /* Simplify header on mobile */
+  .compose-header {
+    padding: 10px 12px;
+  }
+  
+  .compose-header label {
+    font-size: 12px;
+  }
+  
+  .compose-header input {
+    font-size: 14px;
+    padding: 8px 10px;
+  }
+  
+  /* Larger send button on mobile */
+  .compose-actions #c-send {
+    padding: 12px 28px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+  
+  .compose-actions #c-cancel {
+    width: 44px;
+    height: 44px;
+  }
 }
 
 .compose-body #c-editor :deep(.ql-container) {
