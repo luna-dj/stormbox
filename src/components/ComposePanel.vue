@@ -248,7 +248,7 @@ export default {
     })
     
     // Update fullscreen size on window resize
-    const handleWindowResize = () => {
+    const handleFullscreenResize = () => {
       if (isFullscreen.value) {
         const maxWidth = window.innerWidth <= 930 ? '100vw' : '930px'
         composeStyle.value = {
@@ -265,16 +265,16 @@ export default {
     // Watch for fullscreen changes and window resize
     watch(isFullscreen, (fullscreen) => {
       if (fullscreen) {
-        window.addEventListener('resize', handleWindowResize)
+        window.addEventListener('resize', handleFullscreenResize)
       } else {
-        window.removeEventListener('resize', handleWindowResize)
+        window.removeEventListener('resize', handleFullscreenResize)
       }
     })
     
     // Cleanup event listeners on unmount
     onBeforeUnmount(() => {
       stopResize()
-      window.removeEventListener('resize', handleWindowResize)
+      window.removeEventListener('resize', handleFullscreenResize)
     })
 
     const escapeHtml = (str) => {
