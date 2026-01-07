@@ -1,5 +1,5 @@
-const CACHE_NAME = 'stormbox-v1';
-const RUNTIME_CACHE = 'stormbox-runtime-v1';
+const CACHE_NAME = 'stormbox-v3';
+const RUNTIME_CACHE = 'stormbox-runtime-v3';
 
 // Assets to cache on install
 const PRECACHE_ASSETS = [
@@ -22,31 +22,68 @@ self.addEventListener('install', (event) => {
       });
     })
   );
+  // Force activation immediately
   self.skipWaiting();
+});
+
+// Listen for skip waiting message
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 // Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
   console.log('[SW] Activating service worker...');
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((cacheName) => {
-            return cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE;
-          })
-          .map((cacheName) => {
-            console.log('[SW] Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          })
-      );
-    })
+    Promise.all([
+      // Delete old caches
+      caches.keys().then((cacheNames) => {
+        return Promise.all(
+          cacheNames
+            .filter((cacheName) => {
+              return cacheName !== CACHE_NAME && cacheName !== RUNTIME_CACHE;
+            })
+            .map((cacheName) => {
+              console.log('[SW] Deleting old cache:', cacheName);
+              return caches.delete(cacheName);
+            })
+        );
+      }),
+      // Clear any cached /api/ responses from runtime cache
+      caches.open(RUNTIME_CACHE).then((cache) => {
+        return cache.keys().then((keys) => {
+          return Promise.all(
+            keys
+              .filter((request) => {
+                const url = new URL(request.url);
+                return url.pathname.startsWith('/api/');
+              })
+              .map((request) => {
+                console.log('[SW] Deleting cached API response:', request.url);
+                return cache.delete(request);
+              })
+          );
+        });
+      })
+    ])
   );
   return self.clients.claim();
 });
 
 // Fetch event - serve from cache, fallback to network
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  const origin = self.location.origin;
+  
+  // CRITICAL: Skip ALL /api/ requests FIRST - before any other checks
+  // This ensures Vite's proxy can handle them without service worker interference
+  if (url.pathname.startsWith('/api/')) {
+    // Don't intercept at all - let browser handle normally
+    return;
+  }
+
   // Skip non-GET requests
   if (event.request.method !== 'GET') {
     return;
@@ -56,12 +93,9 @@ self.addEventListener('fetch', (event) => {
   if (!event.request.url.startsWith('http')) {
     return;
   }
-
-  const url = new URL(event.request.url);
-  const origin = self.location.origin;
   
   // Only cache requests from our own origin
-  // Skip all external requests (images, favicons, API calls, etc.)
+  // Skip all external requests (images, favicons, etc.)
   if (url.origin !== origin) {
     // Don't intercept external requests - let browser handle them directly
     // This prevents CORS issues and service worker errors

@@ -24,93 +24,98 @@ export default {
       return parts.length > 1 ? parts[1].toLowerCase() : null
     })
 
-    // Get favicon URLs - try direct paths first (no CORS issues), then services
-    const getFaviconUrls = (domain) => {
-      if (!domain) return []
-      const base = `https://${domain}`
-      return [
-        // Direct paths first - no CORS issues
-        `${base}/favicon.ico`,
-        `${base}/favicon.png`,
-        `${base}/apple-touch-icon.png`,
-        `${base}/apple-touch-icon-precomposed.png`,
-        `${base}/icon.png`,
-        `${base}/icons/favicon.ico`,
-        `${base}/images/favicon.ico`,
-        `${base}/static/favicon.ico`,
-        `${base}/assets/favicon.ico`,
-        `${base}/img/favicon.ico`,
-        `${base}/favicon-32x32.png`,
-        `${base}/favicon-16x16.png`,
-        `${base}/favicon.svg`,
-        `${base}/favicon/favicon.ico`,
-        `${base}/favicon/favicon.png`,
-        // Then try DuckDuckGo's favicon service (more reliable than Google)
-        `https://icons.duckduckgo.com/ip3/${domain}.ico`,
-      ]
+    // Load favicon via proxy server
+    // Global request tracking to prevent duplicates across all Avatar instances
+    if (!window.__faviconRequests) {
+      window.__faviconRequests = new Map()
     }
-
-    // Load favicon - try all common paths
+    const ongoingRequests = window.__faviconRequests
+    
     const loadFavicon = async () => {
       if (!domain.value || faviconError.value) {
         tryingFavicon.value = false
         return
       }
-      
-      const urls = getFaviconUrls(domain.value)
-      if (!urls.length) {
-        tryingFavicon.value = false
+
+      // Prevent duplicate concurrent requests for the same domain (global check)
+      if (ongoingRequests.has(domain.value)) {
+        // Wait for the existing request to complete
+        const existingPromise = ongoingRequests.get(domain.value)
+        if (existingPromise instanceof Promise) {
+          try {
+            await existingPromise
+            // Check if favicon was loaded by the other request
+            if (faviconLoaded.value && faviconUrl.value) {
+              return
+            }
+          } catch {
+            // Other request failed, continue to try Libravatar
+          }
+        }
         return
       }
 
       tryingFavicon.value = true
-
-      // Try each URL in sequence
-      let currentIndex = 0
       
-      const tryNextUrl = () => {
-        if (currentIndex >= urls.length) {
-          // All URLs failed, try Libravatar
-          faviconError.value = true
-          tryingFavicon.value = false
-          hasImg.value = true // Now try Libravatar
-          return
-        }
+      // Create a promise for this request and store it globally
+      const requestPromise = (async () => {
+        // Client-side favicon fetching - try direct favicon URLs using <img> (no CORS issues)
+        const faviconUrls = [
+          `https://${domain.value}/favicon.ico`,
+          `https://${domain.value}/favicon.png`,
+          `https://www.google.com/s2/favicons?domain=${domain.value}&sz=64`,
+          `https://icons.duckduckgo.com/ip3/${domain.value}.ico`,
+        ]
 
-        const url = urls[currentIndex]
-        currentFaviconUrl.value = url
-        hasImg.value = true // Show image while trying
-        
-        const img = new Image()
-        
-        // Set a timeout to prevent waiting too long
-        const timeout = setTimeout(() => {
-          currentIndex++
-          tryNextUrl()
-        }, 2000) // 2 second timeout per URL
-        
-        img.onload = () => {
-          clearTimeout(timeout)
-          if (!faviconLoaded.value) {
-            faviconUrl.value = url
+        for (const url of faviconUrls) {
+          try {
+            const img = new Image()
+            const loadPromise = new Promise((resolve, reject) => {
+              img.onload = () => resolve(url)
+              img.onerror = () => reject(new Error('Failed to load'))
+              // No crossOrigin needed - we're just displaying, not reading pixel data
+              img.src = url
+              setTimeout(() => reject(new Error('Timeout')), 2000)
+            })
+
+            const loadedUrl = await loadPromise
+            // Success! Use this favicon URL directly
+            faviconUrl.value = loadedUrl
             faviconLoaded.value = true
             hasImg.value = true
             tryingFavicon.value = false
             currentFaviconUrl.value = null
+            return true
+          } catch {
+            // Try next URL
+            continue
           }
         }
-        
-        img.onerror = () => {
-          clearTimeout(timeout)
-          currentFaviconUrl.value = null
-          currentIndex++
-          tryNextUrl()
+
+        return false
+      })()
+      
+      ongoingRequests.set(domain.value, requestPromise)
+
+      try {
+        const success = await requestPromise
+        if (success) {
+          // Favicon loaded successfully
+          return
         }
-        
-        img.src = url
+      } catch {
+        // Request failed
+      } finally {
+        // Always clear the ongoing request flag after a delay
+        setTimeout(() => {
+          ongoingRequests.delete(domain.value)
+        }, 1000)
       }
 
-      tryNextUrl()
+      // Proxy failed, try Libravatar
+      faviconError.value = true
+      tryingFavicon.value = false
+      hasImg.value = true // Now try Libravatar
     }
 
     // Handle image error - try Libravatar if favicon failed

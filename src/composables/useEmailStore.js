@@ -614,10 +614,10 @@ export function useEmailStore(options = {}) {
         });
       } else {
         // Otherwise, just prefetch inbox and sent
-        const inboxId = inboxMailboxId.value;
-        const sentId = sentMailboxId.value;
-        if (inboxId) primeMailboxCache(inboxId);
-        if (sentId) primeMailboxCache(sentId);
+      const inboxId = inboxMailboxId.value;
+      const sentId = sentMailboxId.value;
+      if (inboxId) primeMailboxCache(inboxId);
+      if (sentId) primeMailboxCache(sentId);
       }
     },
     { immediate: true }

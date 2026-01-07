@@ -197,6 +197,13 @@ export default {
 
     const activeAccountLabel = computed(() => activeAccount.value?.label || '')
     const activeAccountEmail = computed(() => activeAccount.value?.email || activeAccount.value?.id || '')
+    
+    // Extract domain from email address
+    const activeAccountDomain = computed(() => {
+      const email = activeAccountEmail.value
+      if (!email || !email.includes('@')) return null
+      return email.split('@')[1]
+    })
 
     const connected = computed(() => !!unref(activeEmailStore.value?.connected))
     const hasAccounts = computed(() => sessions.value.some((s) => s.connected))
@@ -207,6 +214,15 @@ export default {
         document.body.classList.add('connected')
       } else {
         document.body.classList.remove('connected')
+      }
+    }, { immediate: true })
+    
+    // Update page title with domain
+    watch([activeAccountDomain, connected], ([domain, isConnected]) => {
+      if (isConnected && domain) {
+        document.title = `Mail – ${domain}`
+      } else {
+        document.title = 'Hivepost Webmail'
       }
     }, { immediate: true })
     const status = computed(() => unref(activeEmailStore.value?.status) || 'Not connected.')
@@ -602,6 +618,7 @@ export default {
       setActiveAccount,
       activeAccountLabel,
       activeAccountEmail,
+      activeAccountDomain,
       connected,
       status,
       error,
@@ -758,7 +775,7 @@ export default {
           Calendar
         </button>
       </div>
-      <strong>{{ currentView === 'mail' ? 'Mail' : currentView === 'contacts' ? 'Contacts' : 'Calendar' }} — {{ serverName }}</strong>
+      <strong>Mail — {{ activeAccountDomain || serverName }}</strong>
       <span class="spacer"></span>
       <button class="header-btn mobile-only" @click="toggleFolders" title="Folders" aria-label="Folders">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
