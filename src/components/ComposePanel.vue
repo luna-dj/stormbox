@@ -823,8 +823,8 @@ export default {
 .compose .row input,
 .compose .row select {
   width: 100%;
-  background: rgba(15, 18, 26, 0.9);
-  border: 1px solid rgba(46, 52, 72, 0.9);
+  background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: 10px;
   color: var(--text);
   padding: 8px 10px;
@@ -869,21 +869,29 @@ export default {
 }
 
 .compose-body {
-  background: var(--compose-editor-bg);
-  color: var(--compose-editor-text);
+  background: var(--panel2) !important;
+  color: var(--text);
   min-height: 0;
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
+  overflow: hidden;
+  padding: 12px 16px;
+}
+
+.compose-body #c-editor {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
   overflow: hidden;
 }
 
 #c-signature {
   width: 100%;
   padding: 0.6rem 0.7rem;
-  border: 1px solid rgba(46, 52, 72, 0.9);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(15, 18, 26, 0.9);
+  background: var(--panel);
   color: var(--text);
   resize: vertical;
 }
@@ -1066,37 +1074,134 @@ export default {
 }
 
 .compose-body #c-editor :deep(.ql-toolbar) {
-  order: 2;
-  background: var(--compose-toolbar-bg);
-  border: 1px solid var(--compose-toolbar-border);
-  border-radius: 0 0 8px 8px;
+  order: 999;
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  border-top: 1px solid var(--border) !important;
+  border-radius: 0 0 10px 10px;
+  padding: 10px 12px;
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text);
+  box-shadow: none;
+}
+
+.compose-body #c-editor :deep(.ql-toolbar.ql-snow) {
+  border-color: var(--border) !important;
 }
 
 .compose-body #c-editor :deep(.ql-toolbar .ql-stroke) {
-  stroke: var(--compose-editor-text);
+  stroke: var(--text);
 }
 
 .compose-body #c-editor :deep(.ql-toolbar .ql-fill) {
-  fill: var(--compose-editor-text);
+  fill: var(--text);
 }
 
 .compose-body #c-editor :deep(.ql-toolbar .ql-picker) {
-  color: var(--compose-editor-text);
+  color: var(--text);
+}
+
+.compose-body #c-editor :deep(.ql-toolbar .ql-formats) {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 8px;
+  padding-right: 8px;
+  border-right: 1px solid rgba(46, 52, 72, 0.5);
+}
+
+.compose-body #c-editor :deep(.ql-toolbar .ql-formats:last-child) {
+  margin-right: 0;
+  padding-right: 0;
+  border-right: 0;
+}
+
+.compose-body #c-editor :deep(.ql-toolbar button),
+.compose-body #c-editor :deep(.ql-toolbar .ql-picker) {
+  width: 32px;
+  height: 32px;
+  padding: 6px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  background: transparent;
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.compose-body #c-editor :deep(.ql-toolbar button:hover),
+.compose-body #c-editor :deep(.ql-toolbar button.ql-active),
+.compose-body #c-editor :deep(.ql-toolbar .ql-picker:hover),
+.compose-body #c-editor :deep(.ql-toolbar .ql-picker.ql-active) {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+}
+
+.compose-body #c-editor :deep(.ql-toolbar .ql-picker-label) {
+  border-radius: 6px;
+  padding: 6px 10px;
+  min-width: 80px;
+  color: var(--text);
+}
+
+.compose-body #c-editor :deep(.ql-toolbar .ql-picker-label:hover) {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.compose :deep(.ql-snow .ql-picker-options),
+.compose-body #c-editor :deep(.ql-toolbar.ql-snow .ql-picker-options),
+.compose-body #c-editor :deep(.ql-toolbar .ql-picker-options) {
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  padding: 4px;
+  color: var(--text);
+}
+
+.compose :deep(.ql-snow .ql-picker-item),
+.compose-body #c-editor :deep(.ql-toolbar.ql-snow .ql-picker-item),
+.compose-body #c-editor :deep(.ql-toolbar .ql-picker-item) {
+  border-radius: 4px;
+  padding: 6px 10px;
+  color: var(--text) !important;
+  background: transparent;
+}
+
+.compose-body #c-editor :deep(.ql-toolbar .ql-picker-item:hover) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.compose-body #c-editor :deep(.ql-toolbar .ql-picker-item.ql-selected) {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text);
+}
+
+.compose :deep(.ql-snow .ql-picker.ql-expanded .ql-picker-label) {
+  color: var(--text) !important;
 }
 
 .compose-body #c-editor :deep(.ql-container) {
   order: 1;
-  background: var(--compose-editor-bg);
-  border: 1px solid var(--compose-toolbar-border);
-  border-bottom: 0;
+  background: transparent;
+  border: 0;
   border-radius: 0;
   flex: 1 1 auto;
   min-height: 0;
 }
 
 .compose-body #c-editor :deep(.ql-editor) {
-  color: var(--compose-editor-text);
+  color: var(--text);
   min-height: 120px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: "Space Grotesk", system-ui, Segoe UI, Roboto, sans-serif;
+  line-height: 1.4;
 }
 
 #c-editor :deep(.ql-editor.ql-blank::before) {
