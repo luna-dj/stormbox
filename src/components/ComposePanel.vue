@@ -412,6 +412,13 @@ export default {
             } else if (text && text.trim()) {
               quill.setText(text)
               quill.setSelection(0)
+            } else {
+              // No content provided - clear the editor to ensure it's empty
+              const currentHtml = quill.root.innerHTML.trim()
+              if (currentHtml && currentHtml !== '<p><br></p>' && currentHtml !== '<p></p>') {
+                quill.setText('')
+                quill.setSelection(0)
+              }
             }
             quill.focus()
           } else {
@@ -420,23 +427,64 @@ export default {
           }
         }
         setTimeout(setContent, 200)
+      } else {
+        // Panel closed - clear the editor to prevent content persisting
+        if (quill) {
+          const currentHtml = quill.root.innerHTML.trim()
+          if (currentHtml && currentHtml !== '<p><br></p>' && currentHtml !== '<p></p>') {
+            quill.setText('')
+            quill.setSelection(0)
+          }
+        }
       }
     })
     
     // Watch for compose.html changes to update editor (for replies set after panel opens)
     watch(() => props.compose.html, (newHtml) => {
-      if (quill && props.composeOpen && newHtml && newHtml.trim() && newHtml !== '<p><br></p>' && newHtml !== '<p></p>') {
+      if (!quill || !props.composeOpen) return
+      
+      // If compose.html is cleared (empty), clear the editor
+      if (!newHtml || newHtml.trim() === '' || newHtml === '<p><br></p>' || newHtml === '<p></p>') {
         const currentHtml = quill.root.innerHTML.trim()
-        // Only update if editor is empty or has minimal content
-        if (!currentHtml || currentHtml === '<p><br></p>' || currentHtml === '<p></p>') {
-          setTimeout(() => {
-            if (quill) {
-              quill.root.innerHTML = newHtml
-              quill.setSelection(0)
-            }
-          }, 100)
+        if (currentHtml && currentHtml !== '<p><br></p>' && currentHtml !== '<p></p>') {
+          quill.setText('')
+          quill.setSelection(0)
+        }
+        return
+      }
+      
+      // Only update if editor is empty or has minimal content
+      const currentHtml = quill.root.innerHTML.trim()
+      if (!currentHtml || currentHtml === '<p><br></p>' || currentHtml === '<p></p>') {
+        setTimeout(() => {
+          if (quill) {
+            quill.root.innerHTML = newHtml
+            quill.setSelection(0)
+          }
+        }, 100)
+      }
+    })
+
+    // Watch for sending to complete and clear editor on success
+    let wasSending = false
+    watch(() => props.sending, (isSending) => {
+      if (wasSending && !isSending && quill && props.composeOpen) {
+        // Sending just completed - check if it was successful
+        const status = props.composeStatus || ''
+        // Clear the editor if status indicates success
+        if (status === 'Sent.' || (status && !status.toLowerCase().includes('error') && !status.toLowerCase().includes('missing') && !status.toLowerCase().includes('failed'))) {
+          // Success - clear the editor immediately
+          quill.setText('')
+          quill.setSelection(0)
+          // Also ensure compose object is cleared
+          emit('update:compose', {
+            ...props.compose,
+            html: '',
+            text: ''
+          })
         }
       }
+      wasSending = isSending
     })
 
     return {
