@@ -248,6 +248,7 @@ export default {
       clearFilter,
       listMode,
       isThreadView,
+      isFiltered,
       threads,
       expandedThreads,
       toggleThread,
@@ -373,7 +374,7 @@ export default {
       <!-- Virtualized rows -->
       <div :style="containerStyle">
         <div v-for="v in virtualItems" :key="v.key" :style="itemStyle(v)">
-          <div v-if="items[v.index]" class="rowitem"
+          <div v-if="items && items[v.index]" class="rowitem"
             :class="[{ unread: !items[v.index].isSeen }, { selected: items[v.index].id === selectedEmailId }, { 'has-attach': items[v.index].hasAttachment }]"
             @click="$emit('select-message', items[v.index].id)">
             <Avatar :name="corrFor(items[v.index]).name" :email="corrFor(items[v.index]).email" />
@@ -388,6 +389,11 @@ export default {
           </div>
           <div v-else class="rowitem"></div>
         </div>
+      </div>
+      
+      <!-- Empty state when no messages -->
+      <div v-if="items && items.length === 0 && !isFiltered" class="empty-state">
+        No messages to show
       </div>
 
       <!-- Bottom filler to keep header at top when list is shorter than viewport -->
