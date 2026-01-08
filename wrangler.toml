@@ -1,0 +1,15 @@
+name = "favicon-proxy"
+main = "cloudflare-worker-favicon.js"
+compatibility_date = "2024-01-01"
+
+# Uncomment and set your account ID after creating the worker
+# account_id = "your-account-id"
+
+# Route configuration (optional)
+# routes = [
+#   { pattern = "favicon.*.yourdomain.com", zone_name = "yourdomain.com" }
+# ]
+
+# Environment variables (optional)
+# [vars]
+# CACHE_TTL = "86400"
