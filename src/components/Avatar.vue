@@ -60,22 +60,36 @@ export default {
       // Create a promise for this request and store it globally
       const requestPromise = (async () => {
         // Client-side favicon fetching - try direct favicon URLs using <img> (no CORS issues)
+        // Try multiple common favicon locations and services
         const faviconUrls = [
+          // Direct domain paths (most common)
           `https://${domain.value}/favicon.ico`,
           `https://${domain.value}/favicon.png`,
+          `https://${domain.value}/favicon.svg`,
+          `https://${domain.value}/apple-touch-icon.png`,
+          `https://${domain.value}/apple-touch-icon-precomposed.png`,
+          // Google favicon service (very reliable)
           `https://www.google.com/s2/favicons?domain=${domain.value}&sz=64`,
+          // DuckDuckGo favicon service
           `https://icons.duckduckgo.com/ip3/${domain.value}.ico`,
+          // Google static favicon service (alternative)
+          `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain.value}&size=64`,
+          // Try with www prefix
+          `https://www.${domain.value}/favicon.ico`,
+          `https://www.${domain.value}/favicon.png`,
         ]
 
+        // Try each favicon URL sequentially
         for (const url of faviconUrls) {
           try {
+            currentFaviconUrl.value = url
             const img = new Image()
             const loadPromise = new Promise((resolve, reject) => {
               img.onload = () => resolve(url)
               img.onerror = () => reject(new Error('Failed to load'))
               // No crossOrigin needed - we're just displaying, not reading pixel data
               img.src = url
-              setTimeout(() => reject(new Error('Timeout')), 2000)
+              setTimeout(() => reject(new Error('Timeout')), 4000) // Increased timeout to 4 seconds
             })
 
             const loadedUrl = await loadPromise
