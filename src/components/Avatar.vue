@@ -59,27 +59,74 @@ export default {
       
       // Create a promise for this request and store it globally
       const requestPromise = (async () => {
-        // Client-side favicon fetching - try direct favicon URLs using <img> (no CORS issues)
-        // Try multiple common favicon locations and services
-        const faviconUrls = [
-          // Direct domain paths (most common)
-          `https://${domain.value}/favicon.ico`,
-          `https://${domain.value}/favicon.png`,
-          `https://${domain.value}/favicon.svg`,
-          `https://${domain.value}/apple-touch-icon.png`,
-          `https://${domain.value}/apple-touch-icon-precomposed.png`,
-          // Google favicon service (very reliable)
-          `https://www.google.com/s2/favicons?domain=${domain.value}&sz=64`,
-          // DuckDuckGo favicon service
-          `https://icons.duckduckgo.com/ip3/${domain.value}.ico`,
-          // Google static favicon service (alternative)
-          `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain.value}&size=64`,
-          // Try with www prefix
-          `https://www.${domain.value}/favicon.ico`,
-          `https://www.${domain.value}/favicon.png`,
+        // Client-side favicon fetching - try ALL possible favicon URLs
+        // Generate comprehensive list of favicon paths to try
+        const baseUrls = [
+          `https://${domain.value}`,
+          `https://www.${domain.value}`,
         ]
+        
+        const faviconPaths = [
+          '/favicon.ico',
+          '/favicon.png',
+          '/favicon.svg',
+          '/favicon.jpg',
+          '/favicon.jpeg',
+          '/favicon.gif',
+          '/favicon.ico?1',
+          '/favicon.ico?v=1',
+          '/favicon.ico?v=2',
+          '/favicon.ico?version=1',
+          '/apple-touch-icon.png',
+          '/apple-touch-icon-precomposed.png',
+          '/apple-touch-icon-57x57.png',
+          '/apple-touch-icon-60x60.png',
+          '/apple-touch-icon-72x72.png',
+          '/apple-touch-icon-76x76.png',
+          '/apple-touch-icon-114x114.png',
+          '/apple-touch-icon-120x120.png',
+          '/apple-touch-icon-144x144.png',
+          '/apple-touch-icon-152x152.png',
+          '/apple-touch-icon-180x180.png',
+          '/icon.png',
+          '/icon.ico',
+          '/icons/favicon.ico',
+          '/icons/favicon.png',
+          '/images/favicon.ico',
+          '/images/favicon.png',
+          '/img/favicon.ico',
+          '/img/favicon.png',
+          '/static/favicon.ico',
+          '/static/favicon.png',
+          '/assets/favicon.ico',
+          '/assets/favicon.png',
+          '/favicon-16x16.png',
+          '/favicon-32x32.png',
+          '/favicon-96x96.png',
+          '/favicon-192x192.png',
+        ]
+        
+        // Build comprehensive list of favicon URLs
+        const faviconUrls = []
+        
+        // Add all base URL + path combinations
+        for (const baseUrl of baseUrls) {
+          for (const path of faviconPaths) {
+            faviconUrls.push(`${baseUrl}${path}`)
+          }
+        }
+        
+        // Add favicon services (these are usually reliable fallbacks)
+        faviconUrls.push(
+          `https://www.google.com/s2/favicons?domain=${domain.value}&sz=64`,
+          `https://www.google.com/s2/favicons?domain=${domain.value}&sz=128`,
+          `https://icons.duckduckgo.com/ip3/${domain.value}.ico`,
+          `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain.value}&size=64`,
+          `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${domain.value}&size=64`,
+        )
 
         // Try each favicon URL sequentially
+        // Use shorter timeout per URL since we're trying many URLs
         for (const url of faviconUrls) {
           try {
             currentFaviconUrl.value = url
@@ -89,7 +136,8 @@ export default {
               img.onerror = () => reject(new Error('Failed to load'))
               // No crossOrigin needed - we're just displaying, not reading pixel data
               img.src = url
-              setTimeout(() => reject(new Error('Timeout')), 4000) // Increased timeout to 4 seconds
+              // Shorter timeout (2 seconds) since we're trying many URLs
+              setTimeout(() => reject(new Error('Timeout')), 2000)
             })
 
             const loadedUrl = await loadPromise
