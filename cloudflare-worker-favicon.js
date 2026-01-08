@@ -27,17 +27,31 @@ export default {
     
     const url = new URL(request.url)
     
-    // Extract domain from query parameter or path
-    let domain = url.searchParams.get('url') || url.pathname.slice(1)
+    // Extract domain from query parameter first, then try path
+    let domain = url.searchParams.get('url')
+    
+    // If no query parameter, try to get from path (but skip /icon path)
+    if (!domain) {
+      const path = url.pathname.slice(1)
+      // Skip known paths like 'icon'
+      if (path && path !== 'icon' && !path.includes('/')) {
+        domain = path
+      }
+    }
     
     // Remove leading/trailing slashes and whitespace
-    domain = domain.replace(/^\/+|\/+$/g, '').trim()
+    if (domain) {
+      domain = domain.replace(/^\/+|\/+$/g, '').trim()
+    }
     
     // If no domain provided, return error
     if (!domain) {
-      return new Response('Missing domain parameter. Usage: /?url=example.com', {
+      return new Response('Missing domain parameter. Usage: /?url=example.com or /icon?url=example.com', {
         status: 400,
-        headers: { 'Content-Type': 'text/plain' }
+        headers: { 
+          'Content-Type': 'text/plain',
+          'Access-Control-Allow-Origin': '*'
+        }
       })
     }
     
@@ -219,8 +233,10 @@ export default {
     
     // If no favicon found, try fallback services
     const fallbackServices = [
-      `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
       `https://icons.duckduckgo.com/ip3/${domain}.ico`,
+      `https://icons.duckduckgo.com/ip2/${domain}.ico`,
+      `https://icons.duckduckgo.com/ip/${domain}.ico`,
+      `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
     ]
     
     for (const serviceUrl of fallbackServices) {
@@ -235,30 +251,45 @@ export default {
           }
         })
         
-        if (response.ok) {
-          const headers = new Headers(response.headers)
-          headers.set('Access-Control-Allow-Origin', '*')
-          headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS')
-          headers.set('Access-Control-Allow-Headers', 'Content-Type')
-          headers.set('Access-Control-Max-Age', '86400')
-          headers.set('Cache-Control', 'public, max-age=86400')
-          
-          return new Response(response.body, {
-            status: response.status,
-            headers: headers
-          })
+        // Accept 200-299 status codes and also check content-type
+        if (response.status >= 200 && response.status < 300) {
+          const contentType = response.headers.get('content-type') || ''
+          // Accept if it's an image or if it's from a favicon service (they usually return images)
+          if (contentType.startsWith('image/') || serviceUrl.includes('duckduckgo') || serviceUrl.includes('google.com/s2/favicons')) {
+            const headers = new Headers(response.headers)
+            headers.set('Access-Control-Allow-Origin', '*')
+            headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            headers.set('Access-Control-Allow-Headers', 'Content-Type')
+            headers.set('Access-Control-Max-Age', '86400')
+            headers.set('Cache-Control', 'public, max-age=86400')
+            
+            // Ensure content-type is set for favicon services
+            if (!headers.has('content-type') || !headers.get('content-type').startsWith('image/')) {
+              if (serviceUrl.includes('.ico')) {
+                headers.set('content-type', 'image/x-icon')
+              } else {
+                headers.set('content-type', 'image/png')
+              }
+            }
+            
+            return new Response(response.body, {
+              status: response.status,
+              headers: headers
+            })
+          }
         }
       } catch (error) {
         continue
       }
     }
     
-    // Return 404 if no favicon found
+    // Return 404 if no favicon found (with CORS headers so client can handle it)
     return new Response('Favicon not found', {
       status: 404,
       headers: {
         'Content-Type': 'text/plain',
         'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, OPTIONS',
       }
     })
   }

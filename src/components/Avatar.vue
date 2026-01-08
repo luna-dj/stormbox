@@ -51,45 +51,25 @@ export default {
       })
     }
 
-    // Get favicon URLs - try direct paths first (no CORS issues), then services
+    // Get favicon URLs - use services only (avoid ORB errors from direct domain requests)
+    // The Cloudflare Worker handles direct domain requests server-side
     const getFaviconUrls = (domain) => {
       if (!domain) return []
       
-      const base = `https://${domain}`
-      const baseWww = `https://www.${domain}`
-      
       return [
-        // Cloudflare Worker first (handles HTML parsing for hashed favicons)
+        // 1. Cloudflare Worker first (handles HTML parsing for hashed favicons, avoids ORB)
         ...(CLOUDFLARE_WORKER_URL ? [
           `${CLOUDFLARE_WORKER_URL}/?url=${domain}`,
           `${CLOUDFLARE_WORKER_URL}/?url=https://${domain}`,
           `${CLOUDFLARE_WORKER_URL}/icon?url=${domain}`,
         ] : []),
-        // Direct paths - no CORS issues, try both base and www
-        `${base}/favicon.ico`,
-        `${base}/favicon.png`,
-        `${baseWww}/favicon.ico`,
-        `${baseWww}/favicon.png`,
-        `${base}/apple-touch-icon.png`,
-        `${base}/apple-touch-icon-precomposed.png`,
-        `${base}/icon.png`,
-        `${base}/icons/favicon.ico`,
-        `${base}/images/favicon.ico`,
-        `${base}/static/favicon.ico`,
-        `${base}/assets/favicon.ico`,
-        `${base}/img/favicon.ico`,
-        `${base}/favicon-32x32.png`,
-        `${base}/favicon-16x16.png`,
-        `${base}/favicon.svg`,
-        `${base}/favicon/favicon.ico`,
-        `${base}/favicon/favicon.png`,
-        // Then try DuckDuckGo's favicon service (more reliable than Google)
+        // 2. DuckDuckGo's favicon service (reliable, no ORB issues)
         `https://icons.duckduckgo.com/ip3/${domain}.ico`,
         `https://icons.duckduckgo.com/ip2/${domain}.ico`,
         `https://icons.duckduckgo.com/ip/${domain}.ico`,
-        // Google favicon service
+        // 3. Google favicon service (reliable, no ORB issues)
         `https://www.google.com/s2/favicons?domain=${domain}&sz=64`,
-        // Additional services
+        // Additional services (all handle CORS properly)
         `https://icon.horse/icon/${domain}`,
         `https://icon.horse/icon/https://${domain}`,
         `https://favicon.vemetric.com/${domain}`,
@@ -144,14 +124,8 @@ export default {
         // Try all URLs in parallel
         const promises = urls.map(url => 
           tryLoadImage(url, 2000)
-            .then(result => {
-              console.debug(`[Avatar] Favicon loaded: ${url}`)
-              return { success: true, url: result }
-            })
-            .catch((error) => {
-              console.debug(`[Avatar] Favicon failed: ${url}`, error.message)
-              return { success: false }
-            })
+            .then(result => ({ success: true, url: result }))
+            .catch(() => ({ success: false }))
         )
         
         // Wait for all promises and find first success
@@ -160,7 +134,6 @@ export default {
           if (result.status === 'fulfilled') {
             const value = result.value
             if (value && value.success && value.url) {
-              console.debug(`[Avatar] Using favicon: ${value.url}`)
               faviconUrl.value = value.url
               faviconLoaded.value = true
               tryingFavicon.value = false
@@ -170,7 +143,6 @@ export default {
           }
         }
 
-        console.debug(`[Avatar] No favicon found for ${domain.value} after trying ${urls.length} URLs`)
         return false
       })()
       
