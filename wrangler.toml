@@ -1,4 +1,4 @@
-name = "favicon-proxy"
+name = "stormbox"
 main = "cloudflare-worker-favicon.js"
 compatibility_date = "2024-01-01"
 
