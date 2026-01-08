@@ -59,98 +59,129 @@ export default {
       
       // Create a promise for this request and store it globally
       const requestPromise = (async () => {
-        // Client-side favicon fetching - try ALL possible favicon URLs
-        // Generate comprehensive list of favicon paths to try
-        const baseUrls = [
-          `https://${domain.value}`,
-          `https://www.${domain.value}`,
-        ]
+        // Optimized favicon fetching strategy:
+        // 1. Try reliable favicon services first (fast, reliable)
+        // 2. Try direct domain requests last (slow, unreliable due to CORS/ORB issues)
         
-        const faviconPaths = [
-          '/favicon.ico',
-          '/favicon.png',
-          '/favicon.svg',
-          '/favicon.jpg',
-          '/favicon.jpeg',
-          '/favicon.gif',
-          '/favicon.ico?1',
-          '/favicon.ico?v=1',
-          '/favicon.ico?v=2',
-          '/favicon.ico?version=1',
-          '/apple-touch-icon.png',
-          '/apple-touch-icon-precomposed.png',
-          '/apple-touch-icon-57x57.png',
-          '/apple-touch-icon-60x60.png',
-          '/apple-touch-icon-72x72.png',
-          '/apple-touch-icon-76x76.png',
-          '/apple-touch-icon-114x114.png',
-          '/apple-touch-icon-120x120.png',
-          '/apple-touch-icon-144x144.png',
-          '/apple-touch-icon-152x152.png',
-          '/apple-touch-icon-180x180.png',
-          '/icon.png',
-          '/icon.ico',
-          '/icons/favicon.ico',
-          '/icons/favicon.png',
-          '/images/favicon.ico',
-          '/images/favicon.png',
-          '/img/favicon.ico',
-          '/img/favicon.png',
-          '/static/favicon.ico',
-          '/static/favicon.png',
-          '/assets/favicon.ico',
-          '/assets/favicon.png',
-          '/favicon-16x16.png',
-          '/favicon-32x32.png',
-          '/favicon-96x96.png',
-          '/favicon-192x192.png',
-        ]
-        
-        // Build comprehensive list of favicon URLs
-        const faviconUrls = []
-        
-        // Add all base URL + path combinations
-        for (const baseUrl of baseUrls) {
-          for (const path of faviconPaths) {
-            faviconUrls.push(`${baseUrl}${path}`)
-          }
-        }
-        
-        // Add favicon services (these are usually reliable fallbacks)
-        faviconUrls.push(
-          `https://www.google.com/s2/favicons?domain=${domain.value}&sz=64`,
-          `https://www.google.com/s2/favicons?domain=${domain.value}&sz=128`,
-          `https://icons.duckduckgo.com/ip3/${domain.value}.ico`,
-          `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain.value}&size=64`,
-          `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${domain.value}&size=64`,
-        )
-
-        // Try each favicon URL sequentially
-        // Use shorter timeout per URL since we're trying many URLs
-        for (const url of faviconUrls) {
-          try {
-            currentFaviconUrl.value = url
+        // Helper function to try loading an image with timeout
+        const tryLoadImage = async (url, timeout = 2000) => {
+          return new Promise((resolve, reject) => {
             const img = new Image()
-            const loadPromise = new Promise((resolve, reject) => {
-              img.onload = () => resolve(url)
-              img.onerror = () => reject(new Error('Failed to load'))
-              // No crossOrigin needed - we're just displaying, not reading pixel data
-              img.src = url
-              // Shorter timeout (2 seconds) since we're trying many URLs
-              setTimeout(() => reject(new Error('Timeout')), 2000)
-            })
+            const timer = setTimeout(() => {
+              img.onload = null
+              img.onerror = null
+              reject(new Error('Timeout'))
+            }, timeout)
+            
+            img.onload = () => {
+              clearTimeout(timer)
+              resolve(url)
+            }
+            img.onerror = () => {
+              clearTimeout(timer)
+              reject(new Error('Failed to load'))
+            }
+            img.src = url
+          })
+        }
 
-            const loadedUrl = await loadPromise
-            // Success! Use this favicon URL directly
-            faviconUrl.value = loadedUrl
+        // Phase 1: Try reliable favicon services first (parallel attempts)
+        // These are fast and reliable, so we try them with shorter timeouts
+        const faviconServices = [
+          // Google's favicon service (try multiple subdomains for reliability)
+          `https://www.google.com/s2/favicons?domain=${domain.value}&sz=64`,
+          `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain.value}&size=64`,
+          `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain.value}&size=64`,
+          `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain.value}&size=64`,
+          `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://${domain.value}&size=64`,
+          // Also try http:// variant
+          `https://t0.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${domain.value}&size=64`,
+          `https://t1.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${domain.value}&size=64`,
+          `https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${domain.value}&size=64`,
+          `https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://${domain.value}&size=64`,
+          // DuckDuckGo favicon service (try multiple endpoints for reliability)
+          `https://icons.duckduckgo.com/ip3/${domain.value}.ico`,
+          `https://icons.duckduckgo.com/ip2/${domain.value}.ico`,
+          `https://icons.duckduckgo.com/ip/${domain.value}.ico`,
+          // Icon Horse - smart fallbacks, no auth required
+          `https://icon.horse/icon/${domain.value}`,
+          `https://icon.horse/icon/https://${domain.value}`,
+          // Favicone - user-friendly API
+          `https://favicone.com/${domain.value}`,
+          `https://favicone.com/${domain.value}?s=64`,
+          // Vemetric Free Favicon API - open source
+          `https://favicon.vemetric.com/${domain.value}`,
+          `https://favicon.vemetric.com/${domain.value}?size=64`,
+          // FetchFavicon - free tier available
+          `https://fetchfavicon.com/i/${domain.value}`,
+          `https://fetchfavicon.com/i/${domain.value}?size=64`,
+          // FaviconKit - CDN cached, multiple sizes
+          `https://ico.faviconkit.net/favicon/${domain.value}`,
+          `https://ico.faviconkit.net/favicon/${domain.value}?sz=64`,
+          // GetIcon - advanced API with quality scoring
+          `https://geticon.io/img?url=https://${domain.value}`,
+          `https://geticon.io/img?url=https://${domain.value}&size=64`,
+          // Grabicon - fast and simple
+          `https://grabicon.com/icon?domain=${domain.value}`,
+          `https://grabicon.com/icon?domain=${domain.value}&size=64`,
+          // Logo.dev - production-ready alternative
+          `https://logo.clearbit.com/${domain.value}`,
+        ]
+
+        // Try favicon services in parallel (race condition - first success wins)
+        const servicePromises = faviconServices.map(url => 
+          tryLoadImage(url, 1500).catch(() => null)
+        )
+        
+        // Wait for first successful service response or all to fail
+        const serviceResults = await Promise.allSettled(servicePromises)
+        for (const result of serviceResults) {
+          if (result.status === 'fulfilled' && result.value) {
+            faviconUrl.value = result.value
             faviconLoaded.value = true
             hasImg.value = true
             tryingFavicon.value = false
             currentFaviconUrl.value = null
             return true
-          } catch {
-            // Try next URL
-            continue
+          }
+        }
+
+        // Phase 2: Try direct domain requests (sequential, shorter timeout)
+        // These are less reliable due to CORS/ORB issues, so we try fewer paths
+        // and use shorter timeouts to fail fast
+        const baseUrls = [
+          `https://${domain.value}`,
+          `https://www.${domain.value}`,
+        ]
+        
+        // Reduced list of most common favicon paths (prioritize common ones)
+        const faviconPaths = [
+          '/favicon.ico',
+          '/favicon.png',
+          '/favicon.svg',
+          '/apple-touch-icon.png',
+          '/icon.png',
+          '/favicon-32x32.png',
+          '/favicon-16x16.png',
+        ]
+
+        // Try direct domain requests sequentially with shorter timeout
+        for (const baseUrl of baseUrls) {
+          for (const path of faviconPaths) {
+            const url = `${baseUrl}${path}`
+            try {
+              currentFaviconUrl.value = url
+              const loadedUrl = await tryLoadImage(url, 1000) // Shorter timeout for direct requests
+              faviconUrl.value = loadedUrl
+              faviconLoaded.value = true
+              hasImg.value = true
+              tryingFavicon.value = false
+              currentFaviconUrl.value = null
+              return true
+            } catch {
+              // Try next URL
+              continue
+            }
           }
         }
 
